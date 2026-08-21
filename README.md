@@ -112,11 +112,17 @@ tools/              comprobación del contrato entre la página y el script
 template.docx       el documento original, como referencia del diseño
 ```
 
-Antes de tocar `Code.gs` o `app.js`, `node tools/check-contract.js` comprueba que las dos
-mitades siguen encajando: que toda acción que la página invoca tiene su `case` en el
-script, que `loadProfile` devuelve todas las colecciones que la página lee, y que no hay
-tablas fantasma. No necesita instalar nada. Existe porque una vez se subió la página
-llamando a `upsertCompany` con el script sin esa ruta.
+`node tools/check-contract.js` (sin instalar nada) comprueba dos invariantes que ya se
+rompieron una vez:
+
+- **El contrato con el script.** Que toda acción que la página invoca tiene su `case` en
+  `Code.gs`, que `loadProfile` devuelve todas las colecciones que la página lee, y que no
+  hay tablas fantasma. Existe porque se subió la página llamando a `upsertCompany` con el
+  script sin esa ruta.
+- **La estructura del modal.** Que el scroll vive en `.modal-body` y la cabecera no es
+  `sticky`. Cuando `.modal` era a la vez contenedor flex con `margin:auto` y el elemento
+  con scroll, un panel más alto que la pantalla desplazaba su borde superior por encima
+  del origen del scroll y el contenido pasaba por delante del título.
 
 **Guardado.** Cada tecleo actualiza la pantalla al momento y encola la fila en una cola
 de escritura con una clave por registro. Si sigues escribiendo en el mismo campo, la

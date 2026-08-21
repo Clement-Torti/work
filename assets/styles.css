@@ -748,15 +748,20 @@ td.cell-actions--wide { width: 82px; white-space: nowrap; }
 
 body.modal-open { overflow: hidden; }
 
+/* El scroll vive en .modal-body, no aqui. Cuando .modal era a la vez
+   contenedor flex con margin:auto y elemento scrollable, un panel mas alto
+   que la pantalla empujaba su borde superior por encima del origen del
+   scroll, y la cabecera sticky se quedaba mal colocada: el contenido pasaba
+   por delante de ella. */
 .modal {
   position: fixed;
   inset: 0;
   z-index: 1000;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: 24px 16px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .modal-backdrop {
@@ -768,12 +773,15 @@ body.modal-open { overflow: hidden; }
 
 .modal-panel {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 820px;
-  margin: auto;
+  max-height: 100%;
   background: var(--page);
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(10, 26, 23, .35);
+  overflow: hidden;           /* recorta las esquinas redondeadas */
   animation: modal-in .16s ease-out;
 }
 
@@ -783,16 +791,13 @@ body.modal-open { overflow: hidden; }
 }
 
 .modal-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex: none;
   display: flex;
   align-items: flex-start;
   gap: 12px;
   padding: 20px 24px 14px;
   border-bottom: 1px solid var(--line);
   background: var(--page);
-  border-radius: 12px 12px 0 0;
 }
 
 .modal-title {
@@ -820,7 +825,14 @@ body.modal-open { overflow: hidden; }
 }
 .modal-close:hover { background: #F2F5F4; color: var(--ink); }
 
-.modal-body { padding: 4px 24px 26px; }
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;              /* sin esto un hijo alto desborda el flex */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 24px 26px;
+}
 
 .md-block { padding: 18px 0; border-bottom: 1px solid var(--line); }
 .md-block:last-child { border-bottom: 0; padding-bottom: 4px; }
@@ -932,8 +944,8 @@ body.modal-open { overflow: hidden; }
 
 @media (max-width: 760px) {
   .modal { padding: 0; }
-  .modal-panel { max-width: none; min-height: 100%; border-radius: 0; margin: 0; }
-  .modal-head { border-radius: 0; padding: 16px 16px 12px; }
+  .modal-panel { max-width: none; height: 100%; max-height: 100%; border-radius: 0; }
+  .modal-head { padding: 16px 16px 12px; }
   .modal-title { font-size: 18px; }
   .modal-body { padding: 4px 16px 32px; }
 
@@ -993,3 +1005,22 @@ body.modal-open { overflow: hidden; }
   .co-geo .btn { width: 100%; }
   .co-coord, .co-used { padding: 4px 4px 0; }
 }
+
+/* ================================================================
+   Survol d'une ligne Entreprise : on met en valeur son pin
+   ================================================================ */
+
+/* Uniquement filter/opacity : Leaflet positionne les marqueurs avec
+   transform, y toucher les décalerait. */
+.leaflet-marker-icon.marker-hl {
+  filter: drop-shadow(0 0 5px rgba(27, 122, 107, .95))
+          drop-shadow(0 0 12px rgba(27, 122, 107, .55))
+          saturate(1.35);
+}
+
+.leaflet-marker-icon:not(.marker-hl) {
+  transition: filter .12s ease-out;
+}
+
+/* La ligne survolée est reliée visuellement au pin. */
+#companies-body tr.is-hl > td:first-child { box-shadow: inset 3px 0 0 var(--teal); }

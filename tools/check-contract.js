@@ -1,5 +1,7 @@
 /**
- * Contrato entre el frontend y Code.gs.   node tools/check-contract.js
+ * Comprobaciones estaticas del proyecto.   node tools/check-contract.js
+ *
+ * 1. Contrato entre el frontend y Code.gs.
  *
  * Existe por un fallo real: la seccion Entreprises se envio con el frontend
  * llamando a 'upsertCompany' y Code.gs sin esa ruta. Las pruebas del frontend
@@ -12,6 +14,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const appJs = fs.readFileSync(path.join(ROOT, 'assets/app.js'), 'utf8');
+const css = fs.readFileSync(path.join(ROOT, 'assets/styles.css'), 'utf8');
 const codeGs = fs.readFileSync(path.join(ROOT, 'apps-script/Code.gs'), 'utf8');
 
 let fail = 0;
@@ -147,6 +150,46 @@ const shCo = sheets.get('Companies');
 const filas = shCo ? shCo._grid.slice(1).filter(x => x && String(x[0]).trim()) : [];
 check('ninguna fila huerfana en la hoja Companies',
   filas.every(x => x[1] === B.id), filas);
+
+// ------------------------------------------- 5. estructura del modal
+// Existe por un fallo real: .modal era a la vez contenedor flex con
+// margin:auto y el elemento con scroll. Con contenido mas alto que la
+// pantalla, eso desplazaba el borde superior del panel por encima del origen
+// del scroll y la cabecera sticky se descolocaba, dejando pasar el contenido
+// por delante de ella. El scroll tiene que vivir en .modal-body.
+console.log('\n== el modal scrollea por dentro, sin sticky ==');
+
+function rule(selector) {
+  var i = css.indexOf('\n' + selector + ' {');
+  if (i < 0) return null;
+  return css.slice(i, css.indexOf('}', i));
+}
+
+const rModal = rule('.modal');
+const rPanel = rule('.modal-panel');
+const rHead = rule('.modal-head');
+const rBody = rule('.modal-body');
+
+check('las cuatro reglas del modal existen', !!(rModal && rPanel && rHead && rBody),
+  { modal: !!rModal, panel: !!rPanel, head: !!rHead, body: !!rBody });
+
+check('.modal no scrollea', /overflow:\s*hidden/.test(rModal || ''), rModal);
+check('.modal-panel es una columna flex', /flex-direction:\s*column/.test(rPanel || ''), rPanel);
+check('.modal-panel esta limitado en alto', /max-height:/.test(rPanel || ''), rPanel);
+check('.modal-panel recorta sus esquinas', /overflow:\s*hidden/.test(rPanel || ''), rPanel);
+check('.modal-head NO es sticky', !/position:\s*sticky/.test(rHead || ''), rHead);
+check('.modal-head no se encoge', /flex:\s*none/.test(rHead || ''), rHead);
+check('.modal-body es el que scrollea', /overflow-y:\s*auto/.test(rBody || ''), rBody);
+check('.modal-body puede encogerse (min-height:0)', /min-height:\s*0/.test(rBody || ''), rBody);
+check('el scroll no se contagia a la pagina',
+  /overscroll-behavior:\s*contain/.test(rBody || ''), rBody);
+
+console.log('\n== el resalte del pin no toca transform ==');
+const rHl = rule('.leaflet-marker-icon.marker-hl');
+check('la regla del resalte existe', !!rHl, rHl);
+// Leaflet coloca los marcadores con transform: tocarlo los desplazaria.
+check('no usa transform', !/transform:/.test(rHl || ''), rHl);
+check('usa filter', /filter:/.test(rHl || ''), rHl);
 
 console.log('\n' + (fail ? fail + ' PRUEBA(S) FALLIDA(S)' : 'Contrato: ninguna prueba falla.'));
 process.exit(fail ? 1 : 0);

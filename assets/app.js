@@ -162,6 +162,7 @@
   var coMap = null;       // Leaflet de la seccion Entreprises, permanente
   var coMarkers = {};     // id de empresa -> marcador
   var coFitKey = '';      // para no recentrar el mapa en cada tecleo
+  var coHl = null;        // empresa resaltada al pasar por su fila
 
   // ---------------------------------------------------------------- utils
   var $ = function (id) { return document.getElementById(id); };
@@ -845,7 +846,60 @@
     autoGrowAll(body);
     initCompaniesMap();
     syncCompanyMarkers();
+    coHl = null;   // la fila resaltada ya no existe tras reconstruir la tabla
   }
+
+  /**
+   * Resalta el pin de una empresa mientras el raton (o el foco) esta en su
+   * fila. Se guarda cual esta resaltada para no repintar en cada mousemove.
+   */
+  function highlightCompany(id) {
+    if (coHl === id) return;
+    if (coHl) markerHighlight(coHl, false);
+    coHl = id;
+    if (id) markerHighlight(id, true);
+  }
+
+  function markerHighlight(id, on) {
+    var tr = $('companies-body').querySelector('tr[data-coid="' + cssEsc(id) + '"]');
+    if (tr) tr.classList.toggle('is-hl', on);
+
+    var mk = coMarkers[id];
+    if (!mk) return;
+    // Por delante de los demas mientras esta resaltado.
+    if (mk.setZIndexOffset) mk.setZIndexOffset(on ? 1000 : 0);
+    var el = mk.getElement && mk.getElement();
+    if (el) el.classList.toggle('marker-hl', on);
+    if (on) { if (mk.openTooltip) mk.openTooltip(); }
+    else if (mk.closeTooltip) mk.closeTooltip();
+  }
+
+  function rowCompanyId(target) {
+    var tr = target && target.closest && target.closest('tr[data-coid]');
+    return tr ? tr.getAttribute('data-coid') : null;
+  }
+
+  // mouseover/out en vez de mouseenter/leave: estos ultimos no burbujean.
+  $('companies-body').addEventListener('mouseover', function (e) {
+    highlightCompany(rowCompanyId(e.target));
+  });
+
+  $('companies-body').addEventListener('mouseout', function (e) {
+    var tr = e.target.closest && e.target.closest('tr[data-coid]');
+    // Moverse dentro de la misma fila no cuenta como salir.
+    if (tr && e.relatedTarget && tr.contains(e.relatedTarget)) return;
+    highlightCompany(null);
+  });
+
+  // Mismo efecto con el teclado, y en el movil, donde no hay raton.
+  $('companies-body').addEventListener('focusin', function (e) {
+    highlightCompany(rowCompanyId(e.target));
+  });
+  $('companies-body').addEventListener('focusout', function (e) {
+    var tr = e.target.closest && e.target.closest('tr[data-coid]');
+    if (tr && e.relatedTarget && tr.contains(e.relatedTarget)) return;
+    highlightCompany(null);
+  });
 
   function updateCompanyDatalist() {
     var seen = {};
