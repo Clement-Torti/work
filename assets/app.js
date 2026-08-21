@@ -149,14 +149,19 @@
     jobTypes: [],
     applications: [],
     channels: [],
+    companies: [],
     questions: [],
     learnings: [],
     contacts: []
   };
 
   var openAppId = null;   // candidatura abierta en la ficha
-  var map = null;         // instancia de Leaflet mientras la ficha esta abierta
+  var map = null;         // Leaflet de la ficha, solo mientras esta abierta
   var marker = null;
+
+  var coMap = null;       // Leaflet de la seccion Entreprises, permanente
+  var coMarkers = {};     // id de empresa -> marcador
+  var coFitKey = '';      // para no recentrar el mapa en cada tecleo
 
   // ---------------------------------------------------------------- utils
   var $ = function (id) { return document.getElementById(id); };
@@ -508,6 +513,7 @@
       state.jobTypes = data.jobTypes || [];
       state.applications = data.applications || [];
       state.channels = data.channels || [];
+      state.companies = data.companies || [];
       state.questions = data.questions || [];
       state.learnings = data.learnings || [];
       state.contacts = data.contacts || [];
@@ -537,6 +543,7 @@
     $('profile-avatar').textContent = initials(state.profile.name);
     renderChannels();
     renderJobTypes();
+    renderCompanies();
     renderTracking();
     renderAllQuestions();
   }
@@ -743,7 +750,276 @@
     if (rows.length) rows[rows.length - 1].focus();
   });
 
-  // ---------------------------------------------------------- 3. suivi
+  // ---------------------------------------------------- 3. entreprises
+
+  /**
+   * La candidatura se enlaza con la empresa por NOMBRE (sin distinguir
+   * mayusculas ni espacios sobrantes): el campo sigue siendo texto libre.
+   */
+  function companyForApp(app) {
+    var n = String((app && app.empresa) || '').trim().toLowerCase();
+    if (!n) return null;
+    return state.companies.filter(function (c) {
+      return String(c.name || '').trim().toLowerCase() === n;
+    })[0] || null;
+  }
+
+  function hasPoint(row) {
+    return !!(row && row.lat && row.lon && !isNaN(Number(row.lat)) && !isNaN(Number(row.lon)));
+  }
+
+  /**
+   * El lugar de una candidatura: el suyo si lo tiene, y si no el de su
+   * empresa. Se calcula al mostrar, no se copia: cambiar la direccion de la
+   * empresa mueve todas las candidaturas que no la hayan sobreescrito.
+   */
+  function effectiveLocation(app) {
+    if (hasPoint(app)) {
+      return { lat: Number(app.lat), lon: Number(app.lon), inherited: false };
+    }
+    var c = companyForApp(app);
+    if (hasPoint(c)) {
+      return { lat: Number(c.lat), lon: Number(c.lon), inherited: true, company: c };
+    }
+    return null;
+  }
+
+  function round6(n) {
+    return String(Math.round(Number(n) * 1e6) / 1e6);
+  }
+
+  function companyLabel(c) {
+    return String((c && c.name) || '').trim() || 'Entreprise sans nom';
+  }
+
+  function sameName(a, b) {
+    a = String(a || '').trim().toLowerCase();
+    return !!a && a === String(b || '').trim().toLowerCase();
+  }
+
+  function renderCompanies() {
+    var body = $('companies-body');
+
+    if (!state.companies.length) {
+      body.innerHTML = '<tr><td colspan="4" data-label=""><p class="empty" style="margin:10px">' +
+        'Ajoute une entreprise : son nom servira \u00e0 l\u2019autocompl\u00e9tion du suivi, et son ' +
+        'adresse au lieu par d\u00e9faut de tes candidatures.</p></td></tr>';
+    } else {
+      body.innerHTML = state.companies.map(function (c) {
+        var used = state.applications.filter(function (a) {
+          return sameName(a.empresa, c.name);
+        }).length;
+        return '<tr data-coid="' + esc(c.id) + '">' +
+          '<td data-label="Nom">' +
+            '<input class="cell-input" data-cofield="name" value="' + esc(c.name) +
+              '" placeholder="Nom de l\u2019entreprise">' +
+            (used ? '<div class="co-used">' + used +
+              (used === 1 ? ' candidature' : ' candidatures') + '</div>' : '') +
+          '</td>' +
+          '<td data-label="Description"><textarea class="cell-input" data-cofield="description" ' +
+            'rows="1" placeholder="Ce qu\u2019ils font, pourquoi ils t\u2019int\u00e9ressent">' +
+            esc(c.description) + '</textarea></td>' +
+          '<td data-label="Adresse">' +
+            '<div class="co-geo">' +
+              '<input class="cell-input" data-cofield="ubicacion" value="' + esc(c.ubicacion) +
+                '" placeholder="Adresse, ville">' +
+              '<button class="btn btn--sm" type="button" data-co-geocode="1">Chercher</button>' +
+            '</div>' +
+            '<div class="co-coord">' + (hasPoint(c)
+              ? '\u2299 ' + esc(c.lat) + ', ' + esc(c.lon)
+              : '<span class="co-noplace">pas encore sur la carte</span>') + '</div>' +
+          '</td>' +
+          '<td class="cell-actions"><button class="row-del" type="button" data-co-del="1" ' +
+            'aria-label="Retirer cette entreprise">\u00d7</button></td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    var placed = state.companies.filter(hasPoint).length;
+    $('companies-count').textContent = state.companies.length
+      ? state.companies.length + (state.companies.length === 1 ? ' entreprise' : ' entreprises') +
+        ' \u00b7 ' + placed + ' sur la carte'
+      : '';
+
+    updateCompanyDatalist();
+    autoGrowAll(body);
+    initCompaniesMap();
+    syncCompanyMarkers();
+  }
+
+  function updateCompanyDatalist() {
+    var seen = {};
+    var names = [];
+    state.companies.forEach(function (c) {
+      var n = String(c.name || '').trim();
+      if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = 1; names.push(n); }
+    });
+    $('companies-list').innerHTML = names.map(function (n) {
+      return '<option value="' + esc(n) + '"></option>';
+    }).join('');
+  }
+
+  function initCompaniesMap() {
+    var box = $('companies-map');
+    if (coMap) {
+      // La vista pudo estar oculta: hay que remedir el contenedor.
+      setTimeout(function () { if (coMap) coMap.invalidateSize(); }, 60);
+      return;
+    }
+    if (typeof L === 'undefined') {
+      box.innerHTML = '<p class="empty" style="margin:0">La carte n\u2019a pas pu se charger ' +
+        '(pas de connexion ?). Les adresses en texte sont quand m\u00eame enregistr\u00e9es.</p>';
+      return;
+    }
+    coMap = L.map(box, { scrollWheelZoom: false }).setView(STRASBOURG, 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(coMap);
+    setTimeout(function () { if (coMap) coMap.invalidateSize(); }, 60);
+  }
+
+  /** Pone al dia los marcadores sin recrear el mapa. */
+  function syncCompanyMarkers() {
+    if (!coMap) return;
+
+    Object.keys(coMarkers).forEach(function (id) {
+      var c = byId(state.companies, id);
+      if (!c || !hasPoint(c)) {
+        coMap.removeLayer(coMarkers[id]);
+        delete coMarkers[id];
+      }
+    });
+
+    var pts = [];
+    state.companies.forEach(function (c) {
+      if (!hasPoint(c)) return;
+      var pos = [Number(c.lat), Number(c.lon)];
+      pts.push(pos);
+      if (coMarkers[c.id]) {
+        coMarkers[c.id].setLatLng(pos);
+        if (coMarkers[c.id].setTooltipContent) coMarkers[c.id].setTooltipContent(companyLabel(c));
+        return;
+      }
+      var mk = L.marker(pos, { draggable: true }).addTo(coMap);
+      if (mk.bindTooltip) mk.bindTooltip(companyLabel(c));
+      mk.on('dragend', function () {
+        var row = byId(state.companies, c.id);
+        if (!row) return;
+        var pp = mk.getLatLng();
+        row.lat = round6(pp.lat);
+        row.lon = round6(pp.lng);
+        enqueue('company:' + row.id, 'upsertCompany', row);
+        renderCompanies();
+        $('companies-map-hint').textContent = companyLabel(row) + ' : ' + row.lat + ', ' + row.lon + '.';
+      });
+      coMarkers[c.id] = mk;
+    });
+
+    // Solo se recentra cuando cambia el conjunto de puntos, para no pelearse
+    // con el usuario cada vez que mueve el mapa a mano.
+    var key = pts.map(function (p) { return p.join(','); }).sort().join('|');
+    if (key !== coFitKey) {
+      coFitKey = key;
+      if (pts.length === 1) coMap.setView(pts[0], 14);
+      else if (pts.length > 1 && coMap.fitBounds) coMap.fitBounds(pts, { padding: [30, 30] });
+    }
+  }
+
+  $('companies-body').addEventListener('input', function (e) {
+    var field = e.target.getAttribute('data-cofield');
+    if (!field) return;
+    var row = byId(state.companies, e.target.closest('tr').getAttribute('data-coid'));
+    if (!row) return;
+    row[field] = e.target.value;
+    if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
+    if (field === 'name') {
+      updateCompanyDatalist();
+      if (coMarkers[row.id] && coMarkers[row.id].setTooltipContent) {
+        coMarkers[row.id].setTooltipContent(companyLabel(row));
+      }
+    }
+    enqueue('company:' + row.id, 'upsertCompany', row);
+  });
+
+  $('companies-body').addEventListener('click', function (e) {
+    var geo = e.target.closest('[data-co-geocode]');
+    if (geo) return geocodeCompany(geo.closest('tr').getAttribute('data-coid'));
+
+    if (!e.target.getAttribute('data-co-del')) return;
+    var id = e.target.closest('tr').getAttribute('data-coid');
+    var row = byId(state.companies, id);
+    if (!row) return;
+    if (!confirm('Retirer \u00ab ' + companyLabel(row) + ' \u00bb ? Les candidatures ne sont pas ' +
+        'supprim\u00e9es, elles perdent juste l\u2019adresse h\u00e9rit\u00e9e.')) return;
+    state.companies = state.companies.filter(function (c) { return c.id !== id; });
+    enqueue('company-del:' + id, 'deleteCompany', { id: id });
+    coFitKey = '';
+    renderCompanies();
+  });
+
+  $('btn-add-company').addEventListener('click', function () {
+    var row = {
+      id: uid(), profileId: state.profileId, position: nextPosition(state.companies),
+      name: '', description: '', ubicacion: '', lat: '', lon: ''
+    };
+    state.companies.push(row);
+    enqueue('company:' + row.id, 'upsertCompany', row);
+    renderCompanies();
+    focusLast('#companies-body [data-cofield="name"]');
+  });
+
+  function geocodeCompany(id) {
+    var row = byId(state.companies, id);
+    if (!row) return;
+    var hint = $('companies-map-hint');
+    var q = String(row.ubicacion || '').trim();
+    if (!q) { hint.textContent = '\u00c9cris d\u2019abord une adresse pour cette entreprise.'; return; }
+    if (!coMap) {
+      hint.textContent = 'La carte n\u2019est pas disponible, mais l\u2019adresse est enregistr\u00e9e.';
+      return;
+    }
+
+    hint.textContent = 'Recherche de \u00ab ' + q + ' \u00bb\u2026';
+    geocodeAddress(q).then(function (pt) {
+      if (!pt) {
+        // Se posa en el centro de Estrasburgo para poder arrastrarlo al sitio
+        // correcto: mejor eso que dejar la empresa fuera del mapa.
+        row.lat = round6(STRASBOURG[0]);
+        row.lon = round6(STRASBOURG[1]);
+        enqueue('company:' + row.id, 'upsertCompany', row);
+        coFitKey = '';
+        renderCompanies();
+        hint.textContent = 'Adresse introuvable. Le point a \u00e9t\u00e9 pos\u00e9 au centre de ' +
+          'Strasbourg : fais-le glisser au bon endroit, ou pr\u00e9cise l\u2019adresse (avec la ville).';
+        return;
+      }
+      row.lat = round6(pt.lat);
+      row.lon = round6(pt.lon);
+      enqueue('company:' + row.id, 'upsertCompany', row);
+      coFitKey = '';
+      renderCompanies();
+      coMap.setView([pt.lat, pt.lon], 15);
+      hint.textContent = companyLabel(row) + ' plac\u00e9e. Tu peux affiner en faisant glisser le point.';
+    }).catch(function () {
+      hint.textContent = 'La recherche d\u2019adresse n\u2019a pas r\u00e9pondu. R\u00e9essaie dans un instant.';
+    });
+  }
+
+  /** Nominatim (OpenStreetMap). Devuelve null si no encuentra nada. */
+  function geocodeAddress(query) {
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
+      encodeURIComponent(query);
+    return fetch(url, { headers: { 'Accept': 'application/json' } }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(function (list) {
+      if (!list || !list.length) return null;
+      return { lat: Number(list[0].lat), lon: Number(list[0].lon) };
+    });
+  }
+
+  // ---------------------------------------------------------- 4. suivi
 
   function jobTypeLabel(row, index) {
     return (row.tipo && row.tipo.trim()) || 'Type de poste ' + (index + 1);
@@ -811,7 +1087,8 @@
 
     return '<tr data-id="' + esc(a.id) + '">' +
       '<td data-label="Date"><input class="cell-input" type="date" data-field="fecha" value="' + esc(a.fecha) + '"></td>' +
-      '<td data-label="Entreprise"><input class="cell-input" data-field="empresa" value="' + esc(a.empresa) +
+      '<td data-label="Entreprise"><input class="cell-input" data-field="empresa" ' +
+        'list="companies-list" autocomplete="off" value="' + esc(a.empresa) +
         '" placeholder="Entreprise"></td>' +
       '<td data-label="Poste exact">' +
         '<input class="cell-input" data-field="puesto" value="' + esc(a.puesto) +
@@ -867,7 +1144,7 @@
     row[field] = e.target.value;
     if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
     if (field === 'enlace') refreshLinkOut(e.target);
-    if (field === 'empresa') refreshQuestionCompany(row);
+    if (field === 'empresa') { refreshQuestionCompany(row); renderCompanies(); }
     enqueue('app:' + row.id, 'upsertApplication', row);
   });
 
@@ -1094,12 +1371,12 @@
         '<h3 class="md-h">Lieu</h3>' +
         '<div class="md-geo">' +
           '<input class="input" id="md-address" value="' + esc(app.ubicacion) +
-            '" placeholder="Adresse ou quartier (ex. : 1 place Kl\u00e9ber, Strasbourg)">' +
+            '" placeholder="' + esc(lieuPlaceholder(app)) + '">' +
           '<button class="btn btn--sm" type="button" id="md-geocode">Chercher</button>' +
         '</div>' +
-        '<p class="md-hint" id="md-geo-hint">Cherche une adresse, ou clique directement sur la carte ' +
-          'pour poser le point.</p>' +
+        '<p class="md-hint" id="md-geo-hint"></p>' +
         '<div id="md-map" class="md-map"></div>' +
+        '<div id="md-lieu-actions" class="md-lieu-actions"></div>' +
       '</section>' +
 
       '<section class="md-block">' +
@@ -1130,6 +1407,7 @@
 
     // Leaflet necesita que el contenedor ya sea visible para medirse.
     initMap(app);
+    updateLieuHint(app);
 
     $('md-add-question').addEventListener('click', addQuestion);
     $('md-add-learning').addEventListener('click', addLearning);
@@ -1335,16 +1613,16 @@
       return;
     }
 
-    var has = app.lat && app.lon && !isNaN(Number(app.lat)) && !isNaN(Number(app.lon));
-    var center = has ? [Number(app.lat), Number(app.lon)] : STRASBOURG;
+    var loc = effectiveLocation(app);
+    var center = loc ? [loc.lat, loc.lon] : STRASBOURG;
 
-    map = L.map(box, { scrollWheelZoom: false }).setView(center, has ? 15 : 12);
+    map = L.map(box, { scrollWheelZoom: false }).setView(center, loc ? 15 : 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
 
-    if (has) placeMarker(center[0], center[1], false);
+    if (loc) placeMarker(center[0], center[1], false);
     map.on('click', function (e) { placeMarker(e.latlng.lat, e.latlng.lng, true); });
 
     // El contenedor acaba de aparecer: hay que remedirlo.
@@ -1371,8 +1649,60 @@
     app.lat = String(Math.round(lat * 1e6) / 1e6);
     app.lon = String(Math.round(lon * 1e6) / 1e6);
     enqueue('app:' + app.id, 'upsertApplication', app);
-    $('md-geo-hint').textContent = 'Point enregistr\u00e9 : ' + app.lat + ', ' + app.lon +
-      ' \u00b7 tu peux le d\u00e9placer en le faisant glisser.';
+    updateLieuHint(app);
+  }
+
+  function lieuPlaceholder(app) {
+    var c = companyForApp(app);
+    var addr = String((c && c.ubicacion) || '').trim();
+    if (addr) return 'H\u00e9rit\u00e9 de ' + companyLabel(c) + ' : ' + addr;
+    return 'Adresse ou quartier (ex. : 1 place Kl\u00e9ber, Strasbourg)';
+  }
+
+  /** Explica de donde sale el lugar y ofrece volver al de la empresa. */
+  function updateLieuHint(app) {
+    var hint = $('md-geo-hint');
+    var actions = $('md-lieu-actions');
+    if (!hint || !actions) return;
+
+    var loc = effectiveLocation(app);
+    var c = companyForApp(app);
+    actions.innerHTML = '';
+
+    if (loc && loc.inherited) {
+      hint.textContent = 'Lieu h\u00e9rit\u00e9 de \u00ab ' + companyLabel(loc.company) +
+        ' \u00bb. Cherche une adresse ou clique sur la carte pour donner un lieu propre ' +
+        '\u00e0 cette candidature.';
+    } else if (loc) {
+      hint.textContent = 'Lieu propre \u00e0 cette candidature : ' + app.lat + ', ' + app.lon +
+        ' \u00b7 tu peux le d\u00e9placer en le faisant glisser.';
+      if (hasPoint(c)) {
+        actions.innerHTML = '<button class="btn btn--sm" type="button" id="md-lieu-reset">' +
+          'Revenir \u00e0 l\u2019adresse de ' + esc(companyLabel(c)) + '</button>';
+        $('md-lieu-reset').addEventListener('click', resetLieu);
+      }
+    } else if (c) {
+      hint.textContent = '\u00ab ' + companyLabel(c) + ' \u00bb n\u2019a pas encore d\u2019adresse. ' +
+        'Mets-en une ici, ou renseigne-la dans la section Entreprises pour qu\u2019elle serve ' +
+        '\u00e0 toutes ses candidatures.';
+    } else {
+      hint.textContent = 'Cherche une adresse, ou clique directement sur la carte pour poser le point.';
+    }
+  }
+
+  /** Quita el lugar propio: la candidatura vuelve a heredar el de la empresa. */
+  function resetLieu() {
+    var app = byId(state.applications, openAppId);
+    if (!app) return;
+    app.lat = '';
+    app.lon = '';
+    app.ubicacion = '';
+    enqueue('app:' + app.id, 'upsertApplication', app);
+    $('md-address').value = '';
+    $('md-address').placeholder = lieuPlaceholder(app);
+    if (map) { map.remove(); map = null; marker = null; }
+    initMap(app);
+    updateLieuHint(app);
   }
 
   /** Busca la direccion con Nominatim (OpenStreetMap). */
@@ -1391,26 +1721,18 @@
     if (!map) { hint.textContent = 'La carte n\u2019est pas disponible, mais l\u2019adresse est enregistr\u00e9e.'; return; }
 
     hint.textContent = 'Recherche\u2026';
-    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q);
-    fetch(url, { headers: { 'Accept': 'application/json' } })
-      .then(function (r) {
-        if (!r.ok) throw new Error(r.status);
-        return r.json();
-      })
-      .then(function (list) {
-        if (!list || !list.length) {
-          hint.textContent = 'Adresse introuvable. Tu peux poser le point \u00e0 la main ' +
-            'en cliquant sur la carte.';
-          return;
-        }
-        var lat = Number(list[0].lat), lon = Number(list[0].lon);
-        map.setView([lat, lon], 16);
-        placeMarker(lat, lon, true);
-      })
-      .catch(function () {
-        hint.textContent = 'La recherche d\u2019adresse n\u2019a pas r\u00e9pondu. ' +
-          'Clique sur la carte pour poser le point.';
-      });
+    geocodeAddress(q).then(function (pt) {
+      if (!pt) {
+        hint.textContent = 'Adresse introuvable. Tu peux poser le point \u00e0 la main ' +
+          'en cliquant sur la carte.';
+        return;
+      }
+      map.setView([pt.lat, pt.lon], 16);
+      placeMarker(pt.lat, pt.lon, true);
+    }).catch(function () {
+      hint.textContent = 'La recherche d\u2019adresse n\u2019a pas r\u00e9pondu. ' +
+        'Clique sur la carte pour poser le point.';
+    });
   }
 
   // =====================================================================

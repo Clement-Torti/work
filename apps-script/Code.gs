@@ -22,6 +22,10 @@ var SCHEMA = {
                  'ubicacion', 'lat', 'lon'],
   Channels:     ['id', 'profileId', 'channelKey', 'name', 'url', 'hecho', 'notas'],
 
+  // Empresas del perfil. Las candidaturas se enlazan por NOMBRE, no por id:
+  // el campo empresa sigue siendo texto libre con autocompletado.
+  Companies: ['id', 'profileId', 'position', 'name', 'description', 'ubicacion', 'lat', 'lon'],
+
   // Detalle de una candidatura. En Questions, 'answer' es la respuesta que
   // conviene dar si vuelven a hacer la misma pregunta en otra entrevista.
   Questions: ['id', 'profileId', 'applicationId', 'position', 'question', 'answered', 'answer'],

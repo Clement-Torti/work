@@ -144,9 +144,40 @@
     </div>
   </section>
 
-  <!-- 3. Suivi -->
+  <!-- 3. Entreprises -->
+  <section aria-labelledby="h-entreprises">
+    <h2 id="h-entreprises" class="section">3. Entreprises</h2>
+    <p class="section-lead">
+      Les entreprises qui t'intéressent. Elles alimentent l'autocomplétion de la colonne
+      « Entreprise » du suivi, et leur adresse sert de lieu par défaut aux candidatures.
+    </p>
+    <div class="table-wrap">
+      <table class="grid">
+        <thead>
+          <tr>
+            <th style="width:22%">Nom</th>
+            <th style="width:38%">Description</th>
+            <th style="width:36%">Adresse</th>
+            <th style="width:44px"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="companies-body"></tbody>
+      </table>
+    </div>
+    <div class="table-foot">
+      <button id="btn-add-company" class="btn btn--sm" type="button">+ Ajouter une entreprise</button>
+      <span id="companies-count" class="count-hint"></span>
+    </div>
+    <div id="companies-map" class="companies-map"></div>
+    <p class="md-hint" id="companies-map-hint">
+      Écris une adresse puis clique sur « Chercher » pour placer l'entreprise. Une fois posé,
+      le point se déplace en le faisant glisser.
+    </p>
+  </section>
+
+  <!-- 4. Suivi -->
   <section aria-labelledby="h-suivi">
-    <h2 id="h-suivi" class="section">3. Suivi des candidatures</h2>
+    <h2 id="h-suivi" class="section">4. Suivi des candidatures</h2>
     <p class="section-lead">
       Un tableau par type de poste, pour voir d'un coup d'œil ce qui est parti et ce qu'il reste
       à faire. Clique sur <strong>Fiche</strong> pour ouvrir le détail d'une candidature.
@@ -155,9 +186,9 @@
     <div id="tracking"></div>
   </section>
 
-  <!-- 4. Questions d'entretien -->
+  <!-- 5. Questions d'entretien -->
   <section aria-labelledby="h-questions">
-    <h2 id="h-questions" class="section">4. Questions d'entretien</h2>
+    <h2 id="h-questions" class="section">5. Questions d'entretien</h2>
     <p class="section-lead">
       Toutes les questions posées lors de tous tes entretiens, au même endroit — avec la réponse
       à donner si on te les repose.
@@ -189,6 +220,9 @@
     <div id="modal-body" class="modal-body"></div>
   </div>
 </div>
+
+<!-- Autocompletion de la colonne « Entreprise » du suivi -->
+<datalist id="companies-list"></datalist>
 
 <!-- écran de chargement -->
 <div id="view-loading" class="sheet sheet--narrow" style="text-align:center">

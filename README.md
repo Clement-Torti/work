@@ -132,6 +132,19 @@ credenciales en el código.
 lanza un *preflight* CORS, que Apps Script no sabe contestar por culpa de su redirección
 interna a `googleusercontent.com`.
 
+**La ubicación se hereda, no se copia.** Una candidatura sin punto propio muestra el de
+su empresa, resuelto **al mostrar** comparando `empresa` con `Companies.name` (sin
+distinguir mayúsculas ni espacios sobrantes). La consecuencia útil: si corriges la
+dirección de una empresa, todas sus candidaturas se mueven solas. En cuanto pones un
+punto propio en una candidatura (buscando, pinchando el mapa o arrastrando el marcador),
+ése manda, y aparece un botón para volver a la dirección de la empresa. Nada se duplica
+en la hoja: `lat`/`lon` vacíos *significan* «heredado».
+
+El enlace es por nombre, no por id, porque el campo tiene que seguir aceptando texto
+libre. El efecto secundario: si renombras una empresa, las candidaturas que tenían el
+nombre viejo dejan de heredar su dirección hasta que vuelvas a escribir el nombre nuevo
+(con el autocompletado, un segundo).
+
 **El mapa.** Leaflet 1.9.4 desde unpkg, con hashes SRI, y teselas de OpenStreetMap. La
 búsqueda de direcciones usa Nominatim (OSM), solo al pulsar el botón, así que no hay
 riesgo de pasarse de su límite de peticiones. Si Leaflet no carga (sin conexión, CDN
@@ -149,6 +162,7 @@ arrastrando el marcador; se guarda como `lat`/`lon` en la hoja.
 | `JobTypes` | `id`, `profileId`, `position`, `tipo`, `porQue`, `nivelFrances`, `prioridad` |
 | `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion`, `enlace`, `nota`, `misiones`, `sueldo`, `modalidad`, `ventajas`, `ubicacion`, `lat`, `lon` |
 | `Channels` | `id`, `profileId`, `channelKey`, `name`, `url`, `hecho`, `notas` |
+| `Companies` | `id`, `profileId`, `position`, `name`, `description`, `ubicacion`, `lat`, `lon` |
 | `Questions` | `id`, `profileId`, `applicationId`, `position`, `question`, `answered`, `answer` |
 | `Learnings` | `id`, `profileId`, `applicationId`, `position`, `note` |
 | `Contacts` | `id`, `profileId`, `applicationId`, `position`, `name`, `role`, `email`, `phone` |
@@ -171,7 +185,14 @@ candidaturas; borrar un perfil borra todo lo suyo.
    y sitio para notas. Se pueden añadir canales propios.
 2. **Tipos de puesto** — la tabla del documento, con listas cerradas para el nivel de
    francés y la prioridad.
-3. **Seguimiento de candidaturas** — una tabla por tipo de puesto, generada
+3. **Empresas** — alta, edición y borrado de empresas: nombre, descripción y dirección.
+   Un mapa centrado en Estrasburgo muestra todas, con el nombre en el marcador. Para
+   colocar una, se escribe la dirección y se pulsa «Chercher» (Nominatim); si no la
+   encuentra, el punto se posa en el centro de Estrasburgo para poder arrastrarlo al
+   sitio correcto, en vez de dejar la empresa fuera del mapa. Los marcadores se arrastran
+   para afinar. Borrar una empresa **no** borra sus candidaturas: solo pierden la
+   dirección heredada.
+4. **Seguimiento de candidaturas** — una tabla por tipo de puesto, generada
    automáticamente a partir de la sección 2, más un resumen (candidaturas, enviadas,
    entrevistas, por mandar). El estado y la **nota sobre 10** se colorean solos. Cada
    candidatura guarda además el **enlace a la oferta**, opcional: va debajo del título
@@ -183,7 +204,10 @@ candidaturas; borrar un perfil borra todo lo suyo.
    híbrido / teletrabajo), ventajas, ubicación con mapa, las preguntas que te hicieron
    en la entrevista (y si supiste responder), lo que aprendiste, y los contactos en la
    empresa (nombre, puesto, correo, teléfono, con enlaces para escribir o llamar).
-4. **Preguntas de entrevista** — todas las preguntas de todas las entrevistas juntas,
+
+   La columna **Entreprise** es un campo de texto libre con autocompletado (`<datalist>`)
+   de las empresas de la sección 3.
+5. **Preguntas de entrevista** — todas las preguntas de todas las entrevistas juntas,
    con la respuesta que conviene dar si te la vuelven a hacer. Se edita indistintamente
    desde aquí o desde la ficha; el nombre de la empresa es un enlace que abre su ficha.
 
