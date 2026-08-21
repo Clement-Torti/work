@@ -108,8 +108,15 @@ index.html          la página (tres vistas: conectar → elegir perfil → docu
 assets/styles.css   el diseño del documento, adaptado a pantallas pequeñas
 assets/app.js       estado, cola de guardado y render
 apps-script/Code.gs la base de datos: una hoja de Google Sheets por detrás
+tools/              comprobación del contrato entre la página y el script
 template.docx       el documento original, como referencia del diseño
 ```
+
+Antes de tocar `Code.gs` o `app.js`, `node tools/check-contract.js` comprueba que las dos
+mitades siguen encajando: que toda acción que la página invoca tiene su `case` en el
+script, que `loadProfile` devuelve todas las colecciones que la página lee, y que no hay
+tablas fantasma. No necesita instalar nada. Existe porque una vez se subió la página
+llamando a `upsertCompany` con el script sin esa ruta.
 
 **Guardado.** Cada tecleo actualiza la pantalla al momento y encola la fila en una cola
 de escritura con una clave por registro. Si sigues escribiendo en el mismo campo, la

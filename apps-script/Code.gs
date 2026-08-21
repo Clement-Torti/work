@@ -1,5 +1,5 @@
 /**
- * Backend de "Mi búsqueda de empleo en Estrasburgo".
+ * Backend de "Ma recherche d'emploi a Strasbourg".
  *
  * Este script convierte una hoja de Google Sheets en la base de datos de la
  * página web. Se despliega como "Aplicación web" y la URL resultante es la
@@ -86,6 +86,9 @@ function route(req) {
     case 'upsertChannel':     return { row: upsert('Channels', p) };
     case 'deleteChannel':     return { removed: remove('Channels', p.id) };
 
+    case 'upsertCompany':     return { row: upsert('Companies', p) };
+    case 'deleteCompany':     return { removed: remove('Companies', p.id) };
+
     case 'upsertQuestion':    return { row: upsert('Questions', p) };
     case 'deleteQuestion':    return { removed: remove('Questions', p.id) };
     case 'upsertLearning':    return { row: upsert('Learnings', p) };
@@ -118,7 +121,7 @@ function renameProfile(id, name) {
 }
 
 function deleteProfile(id) {
-  ['Applications', 'JobTypes', 'Channels'].concat(CHILDREN).forEach(function (name) {
+  ['Applications', 'JobTypes', 'Channels', 'Companies'].concat(CHILDREN).forEach(function (name) {
     removeWhere(name, 'profileId', id);
   });
   return { removed: remove('Profiles', id) };
@@ -145,6 +148,7 @@ function loadProfile(profileId) {
     jobTypes:     sortBy(readWhere('JobTypes', 'profileId', profileId), 'position'),
     applications: sortBy(readWhere('Applications', 'profileId', profileId), 'position'),
     channels:     readWhere('Channels', 'profileId', profileId),
+    companies:    sortBy(readWhere('Companies', 'profileId', profileId), 'position'),
     questions:    sortBy(readWhere('Questions', 'profileId', profileId), 'position'),
     learnings:    sortBy(readWhere('Learnings', 'profileId', profileId), 'position'),
     contacts:     sortBy(readWhere('Contacts', 'profileId', profileId), 'position')
