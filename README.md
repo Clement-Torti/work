@@ -36,6 +36,15 @@ No hace falta crear ninguna pestaña ni cabecera a mano: el script crea las hoja
 5. **Implementar** y autoriza los permisos que pide Google.
 6. Copia la **URL de la aplicación web**. Acaba en `/exec`. Ésa es la clave.
 
+**Si al conectar sale que Google no deja entrar (error 403 / «Necesitas acceso»):**
+la implementación no está en «Cualquier usuario». Ojo con las dos opciones parecidas —
+hace falta **«Cualquier usuario»**, no «Cualquier usuario con una cuenta de Google»:
+la página no manda credenciales de sesión, así que la segunda también la rechaza.
+
+Si esa opción no aparece o sale en gris, es la política de tu Google Workspace, que
+prohíbe publicar scripts fuera del dominio. En ese caso hay que crear la hoja y el script
+con una **cuenta personal de Gmail** en vez de la del trabajo.
+
 ### 3. Abrir la página y pegar la clave
 
 Abre `index.html` (ver *Dónde alojarla* abajo), pega la URL y pulsa **Conectar con mi hoja**.

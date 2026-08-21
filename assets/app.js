@@ -152,6 +152,11 @@
 
   // ------------------------------------------------------------------ API
 
+  var ACCESS_HINT = 'Google no deja entrar a la hoja. Casi siempre es que la ' +
+    'implementación no está publicada para «Cualquier usuario»: en Apps Script, ' +
+    'Implementar → Gestionar implementaciones → lápiz → «Quién tiene acceso: ' +
+    'Cualquier usuario» → Implementar.';
+
   /**
    * Habla con la app web de Apps Script.
    * Se manda text/plain a propósito: así el navegador no dispara una
@@ -164,16 +169,22 @@
       redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: action, payload: payload || {} })
+    }).catch(function (err) {
+      // Un fetch que ni siquiera llega a responder casi siempre es esto: Google
+      // devuelve su pagina de «Necesitas acceso», que no lleva cabeceras CORS,
+      // y el navegador la bloquea antes de que podamos leer el codigo de estado.
+      throw new Error(ACCESS_HINT + ' (detalle tecnico: ' + err.message + ')');
     }).then(function (res) {
-      if (!res.ok) throw new Error('La hoja respondió ' + res.status);
+      if (res.status === 401 || res.status === 403) throw new Error(ACCESS_HINT);
+      if (!res.ok) throw new Error('La hoja respondió ' + res.status + '. Vuelve a intentarlo en un momento.');
       return res.text();
     }).then(function (text) {
       var body;
       try {
         body = JSON.parse(text);
       } catch (e) {
-        // Normalmente significa que la app web pide iniciar sesión.
-        throw new Error('Respuesta inesperada. Revisa que la implementación tenga acceso para «Cualquier usuario».');
+        // Llego HTML en vez de JSON: la app web esta pidiendo iniciar sesion.
+        throw new Error(ACCESS_HINT);
       }
       if (!body.ok) throw new Error(body.error || 'Error en la hoja');
       return body.data;
