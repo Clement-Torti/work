@@ -4,11 +4,18 @@ Versión web y responsive del documento `template.docx`: mismo diseño (teal `#1
 Calibri, tablas de cabecera oscura), pero editable desde el móvil y con los datos
 guardados en **tu propia hoja de Google Sheets**.
 
+> **La interfaz está en francés.** Los nombres de columna de la hoja y los comentarios
+> del código se quedan en castellano a propósito: renombrar las columnas rompería las
+> filas ya guardadas, y los comentarios son para quien mantiene el código, no para quien
+> usa la página.
+
 - Cada cambio se guarda solo, en el momento, y persiste.
 - Dos perfiles (o los que quieras): al entrar eliges el tuyo o creas uno nuevo.
 - La clave de la hoja **no está en el código**: la escribe cada persona en su navegador
   y se queda en el `localStorage` de ese dispositivo.
 - Enlaces directos a todos los sitios de búsqueda del documento.
+- Nota sobre 10 por candidatura, y una **ficha detallada** por candidatura con mapa,
+  misiones, sueldo, modalidad, ventajas, preguntas de entrevista y contactos.
 
 ---
 
@@ -125,6 +132,13 @@ credenciales en el código.
 lanza un *preflight* CORS, que Apps Script no sabe contestar por culpa de su redirección
 interna a `googleusercontent.com`.
 
+**El mapa.** Leaflet 1.9.4 desde unpkg, con hashes SRI, y teselas de OpenStreetMap. La
+búsqueda de direcciones usa Nominatim (OSM), solo al pulsar el botón, así que no hay
+riesgo de pasarse de su límite de peticiones. Si Leaflet no carga (sin conexión, CDN
+bloqueado), la ficha lo dice y la dirección en texto se sigue guardando igual: no queda
+un hueco roto. El punto se puede poner buscando la dirección, pinchando en el mapa, o
+arrastrando el marcador; se guarda como `lat`/`lon` en la hoja.
+
 ---
 
 ## Estructura de la hoja
@@ -133,8 +147,15 @@ interna a `googleusercontent.com`.
 |---|---|
 | `Profiles` | `id`, `name`, `createdAt` |
 | `JobTypes` | `id`, `profileId`, `position`, `tipo`, `porQue`, `nivelFrances`, `prioridad` |
-| `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion`, `enlace` |
+| `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion`, `enlace`, `nota`, `misiones`, `sueldo`, `modalidad`, `ventajas`, `ubicacion`, `lat`, `lon` |
 | `Channels` | `id`, `profileId`, `channelKey`, `name`, `url`, `hecho`, `notas` |
+| `Questions` | `id`, `profileId`, `applicationId`, `position`, `question`, `answered`, `answer` |
+| `Learnings` | `id`, `profileId`, `applicationId`, `position`, `note` |
+| `Contacts` | `id`, `profileId`, `applicationId`, `position`, `name`, `role`, `email`, `phone` |
+
+Las columnas nuevas se añaden **siempre al final**. Insertarlas en medio desalinearía
+las filas ya guardadas: es la razón por la que `nota` aparece después de `enlace` y no
+junto a `estado`, aunque en la página salgan seguidas.
 
 Se puede editar a mano en Sheets sin problema, siempre que no se toque la columna `id`
 ni la fila de cabeceras. Borrar un tipo de puesto desde la página borra también sus
@@ -152,10 +173,19 @@ candidaturas; borrar un perfil borra todo lo suyo.
    francés y la prioridad.
 3. **Seguimiento de candidaturas** — una tabla por tipo de puesto, generada
    automáticamente a partir de la sección 2, más un resumen (candidaturas, enviadas,
-   entrevistas, por mandar). El estado se colorea solo. Cada candidatura guarda además
-   el **enlace a la oferta**, opcional: va debajo del título del puesto y, en cuanto hay
-   algo escrito, aparece una flecha ↗ para abrirla en otra pestaña. Se puede pegar sin
-   `https://` delante.
+   entrevistas, por mandar). El estado y la **nota sobre 10** se colorean solos. Cada
+   candidatura guarda además el **enlace a la oferta**, opcional: va debajo del título
+   del puesto y, en cuanto hay algo escrito, aparece una flecha ↗ para abrirla en otra
+   pestaña. Se puede pegar sin `https://` delante.
+
+   El botón **Fiche** abre la ficha detallada, con un contador de cuántos datos hay
+   dentro. La ficha guarda: misiones, fourchette de salaire, modalidad (presencial /
+   híbrido / teletrabajo), ventajas, ubicación con mapa, las preguntas que te hicieron
+   en la entrevista (y si supiste responder), lo que aprendiste, y los contactos en la
+   empresa (nombre, puesto, correo, teléfono, con enlaces para escribir o llamar).
+4. **Preguntas de entrevista** — todas las preguntas de todas las entrevistas juntas,
+   con la respuesta que conviene dar si te la vuelven a hacer. Se edita indistintamente
+   desde aquí o desde la ficha; el nombre de la empresa es un enlace que abre su ficha.
 
 En pantalla pequeña las tablas se convierten en tarjetas apiladas con el nombre de cada
 columna encima, para no tener que hacer scroll horizontal.

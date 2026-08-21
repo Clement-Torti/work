@@ -14,11 +14,23 @@
 var SCHEMA = {
   Profiles:     ['id', 'name', 'createdAt'],
   JobTypes:     ['id', 'profileId', 'position', 'tipo', 'porQue', 'nivelFrances', 'prioridad'],
-  // 'enlace' va al final a proposito: anadir una columna en medio desalinearia
-  // las filas que ya estuvieran guardadas.
-  Applications: ['id', 'profileId', 'jobTypeId', 'position', 'fecha', 'empresa', 'puesto', 'fuente', 'estado', 'proximaAccion', 'enlace'],
-  Channels:     ['id', 'profileId', 'channelKey', 'name', 'url', 'hecho', 'notas']
+  // Las columnas nuevas van SIEMPRE al final: anadirlas en medio desalinearia
+  // las filas ya guardadas.
+  Applications: ['id', 'profileId', 'jobTypeId', 'position', 'fecha', 'empresa', 'puesto',
+                 'fuente', 'estado', 'proximaAccion', 'enlace',
+                 'nota', 'misiones', 'sueldo', 'modalidad', 'ventajas',
+                 'ubicacion', 'lat', 'lon'],
+  Channels:     ['id', 'profileId', 'channelKey', 'name', 'url', 'hecho', 'notas'],
+
+  // Detalle de una candidatura. En Questions, 'answer' es la respuesta que
+  // conviene dar si vuelven a hacer la misma pregunta en otra entrevista.
+  Questions: ['id', 'profileId', 'applicationId', 'position', 'question', 'answered', 'answer'],
+  Learnings: ['id', 'profileId', 'applicationId', 'position', 'note'],
+  Contacts:  ['id', 'profileId', 'applicationId', 'position', 'name', 'role', 'email', 'phone']
 };
+
+/** Tablas colgadas de una candidatura, para los borrados en cascada. */
+var CHILDREN = ['Questions', 'Learnings', 'Contacts'];
 
 // --------------------------------------------------------------- entradas
 
@@ -66,9 +78,16 @@ function route(req) {
     case 'upsertJobType':     return { row: upsert('JobTypes', p) };
     case 'deleteJobType':     return deleteJobType(p.id);
     case 'upsertApplication': return { row: upsert('Applications', p) };
-    case 'deleteApplication': return { removed: remove('Applications', p.id) };
+    case 'deleteApplication': return deleteApplication(p.id);
     case 'upsertChannel':     return { row: upsert('Channels', p) };
     case 'deleteChannel':     return { removed: remove('Channels', p.id) };
+
+    case 'upsertQuestion':    return { row: upsert('Questions', p) };
+    case 'deleteQuestion':    return { removed: remove('Questions', p.id) };
+    case 'upsertLearning':    return { row: upsert('Learnings', p) };
+    case 'deleteLearning':    return { removed: remove('Learnings', p.id) };
+    case 'upsertContact':     return { row: upsert('Contacts', p) };
+    case 'deleteContact':     return { removed: remove('Contacts', p.id) };
   }
   throw new Error('Accion desconocida: ' + action);
 }
@@ -95,15 +114,25 @@ function renameProfile(id, name) {
 }
 
 function deleteProfile(id) {
-  ['Applications', 'JobTypes', 'Channels'].forEach(function (name) {
+  ['Applications', 'JobTypes', 'Channels'].concat(CHILDREN).forEach(function (name) {
     removeWhere(name, 'profileId', id);
   });
   return { removed: remove('Profiles', id) };
 }
 
+/** Borra un tipo de puesto, sus candidaturas y todo el detalle de estas. */
 function deleteJobType(id) {
+  readWhere('Applications', 'jobTypeId', id).forEach(function (app) {
+    CHILDREN.forEach(function (name) { removeWhere(name, 'applicationId', app.id); });
+  });
   removeWhere('Applications', 'jobTypeId', id);
   return { removed: remove('JobTypes', id) };
+}
+
+/** Borra una candidatura con sus preguntas, aprendizajes y contactos. */
+function deleteApplication(id) {
+  CHILDREN.forEach(function (name) { removeWhere(name, 'applicationId', id); });
+  return { removed: remove('Applications', id) };
 }
 
 function loadProfile(profileId) {
@@ -111,7 +140,10 @@ function loadProfile(profileId) {
   return {
     jobTypes:     sortBy(readWhere('JobTypes', 'profileId', profileId), 'position'),
     applications: sortBy(readWhere('Applications', 'profileId', profileId), 'position'),
-    channels:     readWhere('Channels', 'profileId', profileId)
+    channels:     readWhere('Channels', 'profileId', profileId),
+    questions:    sortBy(readWhere('Questions', 'profileId', profileId), 'position'),
+    learnings:    sortBy(readWhere('Learnings', 'profileId', profileId), 'position'),
+    contacts:     sortBy(readWhere('Contacts', 'profileId', profileId), 'position')
   };
 }
 

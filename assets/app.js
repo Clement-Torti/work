@@ -1,43 +1,48 @@
 /* =============================================================
-   Mi búsqueda de empleo en Estrasburgo
-   Front-end de una sola página. La base de datos es una hoja de
-   Google Sheets, a la que se habla a través de una app web de
-   Apps Script. La URL de esa app es la única "clave" y la
-   introduce la persona que usa la página: no hay nada aquí.
+   Ma recherche d'emploi a Strasbourg
+   Front-end de una sola pagina. La base de datos es una hoja de
+   Google Sheets, a la que se habla a traves de una app web de
+   Apps Script. La URL de esa app es la unica "clave" y la
+   introduce la persona que usa la pagina: no hay nada aqui.
+
+   La interfaz esta en frances. Los nombres de campo internos y
+   los comentarios se quedan como estan: renombrar las columnas
+   romperia las filas ya guardadas en la hoja.
    ============================================================= */
 (function () {
   'use strict';
 
   var LS_URL     = 'estrasburgo.webAppUrl';
   var LS_PROFILE = 'estrasburgo.profileId';
-  var SAVE_DELAY = 600;   // ms de espera tras la última tecla
-  var RETRY_BASE = 3000;  // ms, se duplica en cada reintento
+  var SAVE_DELAY = 600;   // ms de espera tras la ultima tecla
+  var RETRY_BASE = 3000;  // ms, crece en cada reintento
 
-  // -------------------------------------------------- catálogo de canales
-  // Los siete canales del documento original, cada uno con sus enlaces.
+  var STRASBOURG = [48.5734, 7.7521];
+
+  // -------------------------------------------------- catalogo de canales
   var CHANNELS = [
     {
       key: 'france-travail',
-      name: 'France Travail (antes Pôle emploi)',
-      why: 'Hay que inscribirse ahí de todas formas.',
+      name: 'France Travail',
+      why: 'Il faut s\u2019y inscrire de toute fa\u00e7on.',
       links: [
-        { label: 'Inscribirse', url: 'https://candidat.francetravail.fr/inscription/' },
-        { label: 'Ofertas en Estrasburgo', url: 'https://candidat.francetravail.fr/offres/recherche?lieux=67482&motsCles=' }
+        { label: 'Inscription', url: 'https://candidat.francetravail.fr/inscription/' },
+        { label: 'Offres', url: 'https://candidat.francetravail.fr/offres/recherche?lieux=67482&motsCles=' }
       ]
     },
     {
       key: 'linkedin',
       name: 'LinkedIn',
-      why: 'Activar «open to work» con Estrasburgo / Grand Est.',
+      why: 'Activer \u00ab open to work \u00bb sur Strasbourg / Grand Est.',
       links: [
-        { label: 'Ofertas en Estrasburgo', url: 'https://www.linkedin.com/jobs/search/?location=Estrasburgo%2C%20Gran%20Este%2C%20Francia' },
-        { label: 'Mi perfil', url: 'https://www.linkedin.com/in/' }
+        { label: 'Offres', url: 'https://www.linkedin.com/jobs/search/?location=Strasbourg%2C%20Grand%20Est%2C%20France' },
+        { label: 'Mon profil', url: 'https://www.linkedin.com/in/' }
       ]
     },
     {
-      key: 'portales',
-      name: 'Indeed, HelloWork, Welcome to the Jungle',
-      why: 'Los portales generalistas: conviene revisarlos con la misma búsqueda guardada.',
+      key: 'portails',
+      name: 'Portails g\u00e9n\u00e9ralistes',
+      why: 'Indeed, HelloWork et Welcome to the Jungle : la m\u00eame recherche enregistr\u00e9e sur les trois.',
       links: [
         { label: 'Indeed', url: 'https://fr.indeed.com/emplois?l=Strasbourg+%2867%29' },
         { label: 'HelloWork', url: 'https://www.hellowork.com/fr-fr/emploi/recherche.html?l=strasbourg-67' },
@@ -47,15 +52,15 @@
     {
       key: 'apec',
       name: 'APEC',
-      why: 'Más para puestos de marketing / comunicación.',
+      why: 'Plut\u00f4t pour les postes marketing / communication.',
       links: [
-        { label: 'Buscar ofertas', url: 'https://www.apec.fr/candidat/recherche-emploi.html/emploi?lieux=59949' }
+        { label: 'Offres', url: 'https://www.apec.fr/candidat/recherche-emploi.html/emploi?lieux=59949' }
       ]
     },
     {
       key: 'interim',
-      name: 'Agencias de interim',
-      why: 'Buenas para conseguir la primera experiencia en Francia rápido.',
+      name: 'Agences d\u2019int\u00e9rim',
+      why: 'Bien pour d\u00e9crocher vite une premi\u00e8re exp\u00e9rience en France.',
       links: [
         { label: 'Manpower', url: 'https://www.manpower.fr/offres-emploi/strasbourg-67000' },
         { label: 'Adecco', url: 'https://www.adecco.fr/offres-emploi/?k=&l=Strasbourg' },
@@ -63,50 +68,77 @@
       ]
     },
     {
-      key: 'comunidades',
-      name: 'Grupos de Facebook y comunidades',
-      why: 'Latinos y expatriados en Estrasburgo: mucho boca a boca.',
+      key: 'communautes',
+      name: 'Groupes Facebook et communaut\u00e9s',
+      why: 'Latinos et expatri\u00e9s \u00e0 Strasbourg : beaucoup de bouche-\u00e0-oreille.',
       links: [
-        { label: 'Buscar grupos', url: 'https://www.facebook.com/search/groups/?q=latinos%20Strasbourg' },
-        { label: 'Expats Strasbourg', url: 'https://www.facebook.com/search/groups/?q=expats%20Strasbourg' }
+        { label: 'Latinos', url: 'https://www.facebook.com/search/groups/?q=latinos%20Strasbourg' },
+        { label: 'Expats', url: 'https://www.facebook.com/search/groups/?q=expats%20Strasbourg' }
       ]
     },
     {
-      key: 'empresas',
-      name: 'Preguntar directo en las empresas que te gusten',
-      why: 'La candidatura espontánea funciona mejor de lo que parece.',
+      key: 'spontanee',
+      name: 'Candidature spontan\u00e9e',
+      why: 'Demander directement aux entreprises qui te plaisent. \u00c7a marche mieux qu\u2019on ne croit.',
       links: [
-        { label: 'Empresas que contratan en Estrasburgo', url: 'https://www.google.com/search?q=entreprises+qui+recrutent+Strasbourg' }
+        { label: 'Qui recrute \u00e0 Strasbourg', url: 'https://www.google.com/search?q=entreprises+qui+recrutent+Strasbourg' }
       ]
     }
   ];
 
   // ------------------------------------------------------ listas cerradas
-  var NIVELES = [
-    { value: '', label: '—', tone: 'todo' },
-    { value: 'No indispensable', label: 'No indispensable', tone: 'good' },
-    { value: 'Básico (A1–A2)', label: 'Básico (A1–A2)', tone: 'good' },
-    { value: 'Intermedio (B1–B2)', label: 'Intermedio (B1–B2)', tone: 'mid' },
-    { value: 'Avanzado (C1–C2)', label: 'Avanzado (C1–C2)', tone: 'high' }
+  var NIVEAUX = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'Pas indispensable', label: 'Pas indispensable', tone: 'good' },
+    { value: 'Basique (A1-A2)', label: 'Basique (A1-A2)', tone: 'good' },
+    { value: 'Interm\u00e9diaire (B1-B2)', label: 'Interm\u00e9diaire (B1-B2)', tone: 'mid' },
+    { value: 'Avanc\u00e9 (C1-C2)', label: 'Avanc\u00e9 (C1-C2)', tone: 'high' }
   ];
 
-  var PRIORIDADES = [
-    { value: '', label: '—', tone: 'todo' },
-    { value: 'Alta', label: 'Alta', tone: 'high' },
-    { value: 'Media', label: 'Media', tone: 'mid' },
-    { value: 'Baja', label: 'Baja', tone: 'low' }
+  var PRIORITES = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'Haute', label: 'Haute', tone: 'high' },
+    { value: 'Moyenne', label: 'Moyenne', tone: 'mid' },
+    { value: 'Basse', label: 'Basse', tone: 'low' }
   ];
 
-  var ESTADOS = [
-    { value: '', label: 'Por mandar', tone: 'todo' },
-    { value: 'Enviada', label: 'Enviada', tone: 'sent' },
-    { value: 'Seguimiento hecho', label: 'Seguimiento hecho', tone: 'sent' },
-    { value: 'Respuesta recibida', label: 'Respuesta recibida', tone: 'progress' },
-    { value: 'Entrevista', label: 'Entrevista', tone: 'progress' },
-    { value: 'Aceptada', label: 'Aceptada', tone: 'good' },
-    { value: 'Sin respuesta', label: 'Sin respuesta', tone: 'low' },
-    { value: 'Rechazada', label: 'Rechazada', tone: 'bad' }
+  var STATUTS = [
+    { value: '', label: '\u00c0 envoyer', tone: 'todo' },
+    { value: 'Envoy\u00e9e', label: 'Envoy\u00e9e', tone: 'sent' },
+    { value: 'Relance faite', label: 'Relance faite', tone: 'sent' },
+    { value: 'R\u00e9ponse re\u00e7ue', label: 'R\u00e9ponse re\u00e7ue', tone: 'progress' },
+    { value: 'Entretien', label: 'Entretien', tone: 'progress' },
+    { value: 'Accept\u00e9e', label: 'Accept\u00e9e', tone: 'good' },
+    { value: 'Sans r\u00e9ponse', label: 'Sans r\u00e9ponse', tone: 'low' },
+    { value: 'Refus\u00e9e', label: 'Refus\u00e9e', tone: 'bad' }
   ];
+
+  /** Estados que cuentan como "ya enviada". */
+  var STATUTS_ENVOYES = ['Envoy\u00e9e', 'Relance faite', 'R\u00e9ponse re\u00e7ue', 'Entretien',
+                         'Accept\u00e9e', 'Sans r\u00e9ponse', 'Refus\u00e9e'];
+
+  var MODALITES = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'Pr\u00e9sentiel', label: 'Pr\u00e9sentiel', tone: 'mid' },
+    { value: 'Hybride', label: 'Hybride', tone: 'good' },
+    { value: 'T\u00e9l\u00e9travail', label: 'T\u00e9l\u00e9travail', tone: 'good' }
+  ];
+
+  var REPONDU = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'oui', label: 'Oui', tone: 'good' },
+    { value: 'moiti\u00e9', label: '\u00c0 moiti\u00e9', tone: 'mid' },
+    { value: 'non', label: 'Non', tone: 'bad' }
+  ];
+
+  /** Nota sobre 10. El tono le da el color a la celda. */
+  var NOTES = (function () {
+    var out = [{ value: '', label: '\u2014', tone: 'todo' }];
+    for (var i = 10; i >= 0; i--) {
+      out.push({ value: String(i), label: i + '/10', tone: i >= 7 ? 'good' : (i >= 5 ? 'mid' : 'bad') });
+    }
+    return out;
+  })();
 
   // --------------------------------------------------------------- estado
   var state = {
@@ -116,8 +148,15 @@
     profile: null,
     jobTypes: [],
     applications: [],
-    channels: []   // filas guardadas; las del catálogo se buscan por channelKey
+    channels: [],
+    questions: [],
+    learnings: [],
+    contacts: []
   };
+
+  var openAppId = null;   // candidatura abierta en la ficha
+  var map = null;         // instancia de Leaflet mientras la ficha esta abierta
+  var marker = null;
 
   // ---------------------------------------------------------------- utils
   var $ = function (id) { return document.getElementById(id); };
@@ -150,20 +189,54 @@
     return 'todo';
   }
 
+  function byId(rows, id) {
+    return rows.filter(function (r) { return r.id === id; })[0];
+  }
+
+  function forApp(rows, appId) {
+    return rows.filter(function (r) { return r.applicationId === appId; });
+  }
+
+  function today() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+  function cssEsc(s) {
+    return window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, '\\$&');
+  }
+
+  function autoGrow(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.max(el.scrollHeight, 22) + 'px';
+  }
+  function autoGrowAll(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('textarea'), autoGrow);
+  }
+
+  /** Acepta que se pegue "entreprise.fr/offre" sin el https:// delante. */
+  function normalizeUrl(value) {
+    var v = String(value || '').trim();
+    if (!v) return '';
+    // Solo http(s): asi no puede colarse un javascript: en el href.
+    return /^https?:\/\//i.test(v) ? v : 'https://' + v;
+  }
+
   // ------------------------------------------------------------------ API
 
-  var ACCESS_HINT = 'Google no deja entrar a la hoja. Casi siempre es que la ' +
-    'implementación no está publicada para «Cualquier usuario»: en Apps Script, ' +
-    'Implementar → Gestionar implementaciones → lápiz → «Quién tiene acceso: ' +
-    'Cualquier usuario» → Implementar.';
+  var ACCESS_HINT = 'Google bloque l\u2019acc\u00e8s \u00e0 la feuille. En g\u00e9n\u00e9ral, c\u2019est que le ' +
+    'd\u00e9ploiement n\u2019est pas publi\u00e9 pour \u00ab Tout le monde \u00bb : dans Apps Script, ' +
+    'D\u00e9ployer \u2192 G\u00e9rer les d\u00e9ploiements \u2192 crayon \u2192 \u00ab Qui a acc\u00e8s : ' +
+    'Tout le monde \u00bb \u2192 D\u00e9ployer.';
 
   /**
    * Habla con la app web de Apps Script.
-   * Se manda text/plain a propósito: así el navegador no dispara una
-   * petición preflight, que Apps Script no sabe responder por sus redirecciones.
+   * Se manda text/plain a proposito: asi el navegador no dispara una
+   * peticion preflight, que Apps Script no sabe responder por sus redirecciones.
    */
   function api(action, payload) {
-    if (!state.url) return Promise.reject(new Error('Falta la clave de la hoja'));
+    if (!state.url) return Promise.reject(new Error('Cl\u00e9 de la feuille manquante'));
     return fetch(state.url, {
       method: 'POST',
       redirect: 'follow',
@@ -171,29 +244,28 @@
       body: JSON.stringify({ action: action, payload: payload || {} })
     }).catch(function (err) {
       // Un fetch que ni siquiera llega a responder casi siempre es esto: Google
-      // devuelve su pagina de «Necesitas acceso», que no lleva cabeceras CORS,
+      // devuelve su pagina de "acceso denegado", que no lleva cabeceras CORS,
       // y el navegador la bloquea antes de que podamos leer el codigo de estado.
-      throw new Error(ACCESS_HINT + ' (detalle tecnico: ' + err.message + ')');
+      throw new Error(ACCESS_HINT + ' (d\u00e9tail technique : ' + err.message + ')');
     }).then(function (res) {
       if (res.status === 401 || res.status === 403) throw new Error(ACCESS_HINT);
-      if (!res.ok) throw new Error('La hoja respondió ' + res.status + '. Vuelve a intentarlo en un momento.');
+      if (!res.ok) throw new Error('La feuille a r\u00e9pondu ' + res.status + '. R\u00e9essaie dans un instant.');
       return res.text();
     }).then(function (text) {
       var body;
       try {
         body = JSON.parse(text);
       } catch (e) {
-        // Llego HTML en vez de JSON: la app web esta pidiendo iniciar sesion.
         throw new Error(ACCESS_HINT);
       }
-      if (!body.ok) throw new Error(body.error || 'Error en la hoja');
+      if (!body.ok) throw new Error(body.error || 'Erreur dans la feuille');
       return body.data;
     });
   }
 
   // ------------------------------------------------------- cola de guardado
   // Cada cambio se encola con una clave. Si se vuelve a tocar el mismo campo
-  // antes de que salga, sustituye al anterior: escribir rápido no genera
+  // antes de que salga, sustituye al anterior: escribir rapido no genera
   // veinte peticiones.
   var queue = new Map();
   var flushTimer = null;
@@ -222,8 +294,7 @@
     var op = queue.get(key);
 
     api(op.action, op.payload).then(function () {
-      // Solo se descarta si nadie la ha reemplazado mientras viajaba:
-      // si se siguio escribiendo en el mismo campo, la version nueva se queda.
+      // Solo se descarta si nadie la ha reemplazado mientras viajaba.
       if (queue.get(key) === op) queue.delete(key);
       retries = 0;
       flushing = false;
@@ -234,7 +305,7 @@
       flushing = false;
       retries++;
       setSaveState('error');
-      showBanner('app-error', 'No se pudo guardar: ' + err.message, retryNow);
+      showBanner('app-error', 'Impossible d\u2019enregistrer : ' + err.message, retryNow);
       clearTimeout(flushTimer);
       flushTimer = setTimeout(flush, Math.min(RETRY_BASE * retries, 20000));
     });
@@ -249,7 +320,10 @@
   function setSaveState(kind) {
     var el = $('save-state');
     if (!el) return;
-    var text = { idle: 'Al día', saving: 'Guardando…', saved: 'Guardado', error: 'Sin guardar' }[kind];
+    var text = {
+      idle: '\u00c0 jour', saving: 'Enregistrement\u2026',
+      saved: 'Enregistr\u00e9', error: 'Non enregistr\u00e9'
+    }[kind];
     el.setAttribute('data-state', kind);
     $('save-state-text').textContent = text;
     if (kind === 'saved') {
@@ -257,7 +331,7 @@
       setSaveState._t = setTimeout(function () {
         if (el.getAttribute('data-state') === 'saved' && !queue.size) {
           el.setAttribute('data-state', 'idle');
-          $('save-state-text').textContent = 'Al día';
+          $('save-state-text').textContent = '\u00c0 jour';
         }
       }, 2500);
     }
@@ -277,7 +351,7 @@
       var b = document.createElement('button');
       b.className = 'btn btn--sm';
       b.type = 'button';
-      b.textContent = 'Reintentar';
+      b.textContent = 'R\u00e9essayer';
       b.addEventListener('click', onRetry);
       el.appendChild(b);
     }
@@ -300,19 +374,20 @@
   }
 
   // =====================================================================
-  //  Conexión
+  //  Connexion
   // =====================================================================
 
   $('connect-form').addEventListener('submit', function (e) {
     e.preventDefault();
     var url = $('connect-url').value.trim();
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec/.test(url)) {
-      showBanner('connect-error', 'Esa no parece la URL de la app web. Tiene que empezar por https://script.google.com/macros/s/ y acabar en /exec.');
+      showBanner('connect-error', 'Ce n\u2019est pas l\u2019URL de l\u2019application web. Elle doit commencer ' +
+        'par https://script.google.com/macros/s/ et finir par /exec.');
       return;
     }
     hideBanner('connect-error');
     $('connect-submit').disabled = true;
-    $('connect-submit').textContent = 'Comprobando…';
+    $('connect-submit').textContent = 'V\u00e9rification\u2026';
 
     state.url = url;
     api('ping').then(function () {
@@ -320,16 +395,16 @@
       return openProfiles();
     }).catch(function (err) {
       state.url = null;
-      showBanner('connect-error', 'No se pudo conectar: ' + err.message);
+      showBanner('connect-error', 'Connexion impossible : ' + err.message);
       show('connect');
     }).then(function () {
       $('connect-submit').disabled = false;
-      $('connect-submit').textContent = 'Conectar con mi hoja';
+      $('connect-submit').textContent = 'Se connecter \u00e0 ma feuille';
     });
   });
 
   function changeKey() {
-    if (queue.size && !confirm('Hay cambios sin guardar. ¿Cambiar la clave de todas formas?')) return;
+    if (queue.size && !confirm('Des modifications ne sont pas encore parties. Changer la cl\u00e9 quand m\u00eame ?')) return;
     queue.clear();
     localStorage.removeItem(LS_URL);
     localStorage.removeItem(LS_PROFILE);
@@ -344,18 +419,18 @@
   $('btn-change-key-app').addEventListener('click', changeKey);
 
   // =====================================================================
-  //  Perfiles
+  //  Profils
   // =====================================================================
 
   function openProfiles() {
-    show('loading', 'Buscando perfiles…');
+    show('loading', 'Recherche des profils\u2026');
     return api('listProfiles').then(function (data) {
       state.profiles = data.profiles || [];
       renderProfiles();
       hideBanner('profiles-error');
       show('profiles');
     }).catch(function (err) {
-      showBanner('profiles-error', 'No se pudieron cargar los perfiles: ' + err.message);
+      showBanner('profiles-error', 'Chargement des profils impossible : ' + err.message);
       renderProfiles();
       show('profiles');
     });
@@ -364,14 +439,14 @@
   function renderProfiles() {
     var box = $('profile-list');
     if (!state.profiles.length) {
-      box.innerHTML = '<p class="empty">Todavía no hay ningún perfil. Crea el primero abajo.</p>';
+      box.innerHTML = '<p class="empty">Aucun profil pour le moment. Cr\u00e9e le premier ci-dessous.</p>';
       return;
     }
     box.innerHTML = state.profiles.map(function (p) {
       return '<button class="profile-card" type="button" data-id="' + esc(p.id) + '">' +
              '<span class="avatar" aria-hidden="true">' + esc(initials(p.name)) + '</span>' +
              '<span>' + esc(p.name) + '</span>' +
-             '<span class="go" aria-hidden="true">→</span></button>';
+             '<span class="go" aria-hidden="true">\u2192</span></button>';
     }).join('');
   }
 
@@ -386,7 +461,7 @@
     var name = input.value.trim();
     if (!name) return;
 
-    show('loading', 'Creando el perfil…');
+    show('loading', 'Cr\u00e9ation du profil\u2026');
     api('createProfile', { name: name }).then(function (data) {
       input.value = '';
       state.profiles.push(data.profile);
@@ -394,12 +469,12 @@
         return openProfile(data.profile.id);
       });
     }).catch(function (err) {
-      showBanner('profiles-error', 'No se pudo crear el perfil: ' + err.message);
+      showBanner('profiles-error', 'Cr\u00e9ation impossible : ' + err.message);
       show('profiles');
     });
   });
 
-  /** Un perfil nuevo arranca con tres tipos de puesto vacíos, como el documento. */
+  /** Un perfil nuevo arranca con tres tipos de puesto vacios, como el documento. */
   function seedJobTypes(profileId) {
     var rows = [0, 1, 2].map(function (i) {
       return {
@@ -413,43 +488,48 @@
   }
 
   $('btn-reload-profiles').addEventListener('click', openProfiles);
+
   $('btn-switch-profile').addEventListener('click', function () {
     // Lo que queda en la cola lleva su propio profileId, asi que se guarda en
     // el perfil correcto aunque ya estemos en otro. Solo avisamos.
-    if (queue.size && !confirm('Quedan cambios por enviar. Se guardaran en el perfil de ' +
-        state.profile.name + ' de todas formas. ¿Cambiar de perfil ahora?')) return;
+    if (queue.size && !confirm('Des modifications ne sont pas encore parties. Elles seront ' +
+        'enregistr\u00e9es dans le profil de ' + state.profile.name +
+        ' quand m\u00eame. Changer de profil ?')) return;
     localStorage.removeItem(LS_PROFILE);
     state.profileId = null;
     openProfiles();
   });
 
   function openProfile(id) {
-    show('loading', 'Abriendo tu documento…');
+    show('loading', 'Ouverture de ton document\u2026');
     state.profileId = id;
     return api('loadProfile', { profileId: id }).then(function (data) {
-      state.profile = state.profiles.filter(function (p) { return p.id === id; })[0] || { id: id, name: '?' };
+      state.profile = byId(state.profiles, id) || { id: id, name: '?' };
       state.jobTypes = data.jobTypes || [];
       state.applications = data.applications || [];
       state.channels = data.channels || [];
+      state.questions = data.questions || [];
+      state.learnings = data.learnings || [];
+      state.contacts = data.contacts || [];
       localStorage.setItem(LS_PROFILE, id);
       renderApp();
       hideBanner('app-error');
       setSaveState('idle');
       show('app');
     }).catch(function (err) {
-      showBanner('profiles-error', 'No se pudo abrir el perfil: ' + err.message);
+      showBanner('profiles-error', 'Ouverture du profil impossible : ' + err.message);
       show('profiles');
     });
   }
 
   $('btn-reload-app').addEventListener('click', function () {
-    if (queue.size && !confirm('Hay cambios sin guardar. ¿Recargar de todas formas?')) return;
+    if (queue.size && !confirm('Des modifications ne sont pas encore parties. Recharger quand m\u00eame ?')) return;
     queue.clear();
     openProfile(state.profileId);
   });
 
   // =====================================================================
-  //  Documento
+  //  Document
   // =====================================================================
 
   function renderApp() {
@@ -458,11 +538,25 @@
     renderChannels();
     renderJobTypes();
     renderTracking();
+    renderAllQuestions();
   }
 
-  // ------------------------------------------------------- 1. canales
+  function selectHtml(list, value, field, extra) {
+    var options = list.map(function (o) {
+      return '<option value="' + esc(o.value) + '"' + (o.value === value ? ' selected' : '') + '>' +
+             esc(o.label) + '</option>';
+    }).join('');
+    return '<select class="cell-select" data-field="' + field + '" data-tone="' + toneOf(list, value) + '"' +
+           (extra || '') + '>' + options + '</select>';
+  }
 
-  /** Devuelve (creándola si hace falta) la fila guardada de un canal. */
+  // ------------------------------------------------------- 1. canaux
+
+  function channelId(key) {
+    return state.profileId + '::' + key;
+  }
+
+  /** Devuelve (creandola si hace falta) la fila guardada de un canal. */
   function channelRow(key) {
     var found = state.channels.filter(function (c) { return c.channelKey === key; })[0];
     if (found) return found;
@@ -477,59 +571,58 @@
     return row;
   }
 
-  function channelId(key) {
-    return state.profileId + '::' + key;
+  function customChannels() {
+    return state.channels.filter(function (c) {
+      return !CHANNELS.some(function (d) { return d.key === c.channelKey; });
+    });
   }
 
   function renderChannels() {
-    var custom = state.channels.filter(function (c) {
-      return !CHANNELS.some(function (d) { return d.key === c.channelKey; });
-    });
-
     var html = CHANNELS.map(function (def) {
       var row = state.channels.filter(function (c) { return c.channelKey === def.key; })[0] || {};
       var links = def.links.map(function (l) {
         return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>';
-      }).join(' · ');
-      return channelHtml(def.key, esc(def.name), links, esc(def.why), row.hecho === 'si', row.notas || '', false);
+      }).join('<span class="sep">\u00b7</span>');
+      var name = '<span class="ch-name" title="' + esc(def.why) + '">' + esc(def.name) + '</span>';
+      return channelHtml(def.key, name, links, row.hecho === 'si', row.notas || '', false);
     }).join('');
 
-    html += custom.map(function (row) {
+    html += customChannels().map(function (row) {
       var links = row.url
-        ? '<a href="' + esc(row.url) + '" target="_blank" rel="noopener">Abrir</a>'
-        : '';
-      var name = '<input class="cell-input" style="padding:0;font-weight:600" data-ckey="' + esc(row.channelKey) +
-                 '" data-cfield="name" value="' + esc(row.name) + '" placeholder="Nombre del canal">';
-      return channelHtml(row.channelKey, name, links, '', row.hecho === 'si', row.notas || '', true, row.url);
+        ? '<a href="' + esc(normalizeUrl(row.url)) + '" target="_blank" rel="noopener">Ouvrir</a>'
+        : '<input class="ch-url" data-cfield="url" value="' + esc(row.url) +
+          '" placeholder="https://\u2026" spellcheck="false">';
+      var name = '<input class="ch-name-input" data-cfield="name" value="' + esc(row.name) +
+                 '" placeholder="Nom du canal">';
+      return channelHtml(row.channelKey, name, links, row.hecho === 'si', row.notas || '', true);
     }).join('');
 
     $('channels').innerHTML = html;
-
-    var done = state.channels.filter(function (c) { return c.hecho === 'si'; }).length;
-    var total = CHANNELS.length + custom.length;
-    $('channels-count').textContent = done + ' de ' + total + ' listos';
+    updateChannelCount();
   }
 
-  function channelHtml(key, nameHtml, linksHtml, why, done, notas, isCustom, url) {
+  function channelHtml(key, nameHtml, linksHtml, done, notas, isCustom) {
     return '<div class="channel' + (done ? ' is-done' : '') + '" data-ckey="' + esc(key) + '">' +
       '<input class="channel-check" type="checkbox" data-cfield="hecho"' + (done ? ' checked' : '') +
-        ' aria-label="Marcar canal como listo">' +
-      '<div class="channel-main">' +
-        '<div class="channel-name">' + nameHtml + (linksHtml ? ' <span style="font-weight:400;font-size:13.5px">' + linksHtml + '</span>' : '') + '</div>' +
-        (why ? '<div class="channel-why">' + why + '</div>' :
-          (isCustom ? '<input class="channel-note" style="margin-top:5px" data-cfield="url" value="' + esc(url || '') + '" placeholder="https://… (opcional)">' : '')) +
-      '</div>' +
-      '<input class="channel-note" data-cfield="notas" value="' + esc(notas) + '" placeholder="Notas: usuario, fecha de inscripción, contacto…">' +
-      (isCustom ? '<button class="row-del" type="button" data-cdel="1" aria-label="Quitar canal">×</button>'
-                : '<span></span>') +
+        ' aria-label="Marquer ce canal comme pr\u00eat">' +
+      '<div class="ch-main">' + nameHtml + '</div>' +
+      '<div class="ch-links">' + linksHtml + '</div>' +
+      '<input class="channel-note" data-cfield="notas" value="' + esc(notas) + '" placeholder="Notes\u2026">' +
+      (isCustom ? '<button class="row-del" type="button" data-cdel="1" aria-label="Retirer ce canal">\u00d7</button>'
+                : '<span class="ch-spacer"></span>') +
       '</div>';
+  }
+
+  function updateChannelCount() {
+    var done = state.channels.filter(function (c) { return c.hecho === 'si'; }).length;
+    var total = CHANNELS.length + customChannels().length;
+    $('channels-count').textContent = done + ' sur ' + total + ' pr\u00eats';
   }
 
   $('channels').addEventListener('input', function (e) {
     var field = e.target.getAttribute('data-cfield');
     if (!field || e.target.type === 'checkbox') return;
-    var key = e.target.closest('.channel').getAttribute('data-ckey');
-    var row = channelRow(key);
+    var row = channelRow(e.target.closest('.channel').getAttribute('data-ckey'));
     row[field] = e.target.value;
     enqueue('channel:' + row.id, 'upsertChannel', row);
   });
@@ -541,12 +634,7 @@
     row.hecho = e.target.checked ? 'si' : '';
     wrap.classList.toggle('is-done', e.target.checked);
     enqueue('channel:' + row.id, 'upsertChannel', row);
-
-    var custom = state.channels.filter(function (c) {
-      return !CHANNELS.some(function (d) { return d.key === c.channelKey; });
-    }).length;
-    var done = state.channels.filter(function (c) { return c.hecho === 'si'; }).length;
-    $('channels-count').textContent = done + ' de ' + (CHANNELS.length + custom) + ' listos';
+    updateChannelCount();
   });
 
   $('channels').addEventListener('click', function (e) {
@@ -568,59 +656,44 @@
     state.channels.push(row);
     enqueue('channel:' + row.id, 'upsertChannel', row);
     renderChannels();
-    var inputs = $('channels').querySelectorAll('[data-cfield="name"]');
+    var inputs = $('channels').querySelectorAll('.ch-name-input');
     if (inputs.length) inputs[inputs.length - 1].focus();
   });
 
-  // -------------------------------------------------- 2. tipos de puesto
-
-  function selectHtml(list, value, field, id) {
-    var options = list.map(function (o) {
-      return '<option value="' + esc(o.value) + '"' + (o.value === value ? ' selected' : '') + '>' +
-             esc(o.label) + '</option>';
-    }).join('');
-    return '<select class="cell-select" data-id="' + esc(id) + '" data-field="' + field +
-           '" data-tone="' + toneOf(list, value) + '">' + options + '</select>';
-  }
+  // -------------------------------------------------- 2. types de poste
 
   function renderJobTypes() {
     var body = $('jobtypes-body');
     if (!state.jobTypes.length) {
       body.innerHTML = '<tr><td colspan="5" data-label=""><p class="empty" style="margin:10px">' +
-        'Añade el primer tipo de puesto que te interese.</p></td></tr>';
+        'Ajoute le premier type de poste qui t\u2019int\u00e9resse.</p></td></tr>';
     } else {
       body.innerHTML = state.jobTypes.map(function (r, i) {
         return '<tr data-id="' + esc(r.id) + '">' +
-          '<td data-label="Tipo de puesto"><input class="cell-input" data-field="tipo" value="' + esc(r.tipo) +
-            '" placeholder="Tipo de puesto ' + (i + 1) + '"></td>' +
-          '<td data-label="¿Por qué me interesa?"><textarea class="cell-input" data-field="porQue" rows="1" ' +
-            'placeholder="Lo que te atrae de este tipo de trabajo">' + esc(r.porQue) + '</textarea></td>' +
-          '<td data-label="Nivel de francés">' + selectHtml(NIVELES, r.nivelFrances, 'nivelFrances', r.id) + '</td>' +
-          '<td data-label="Prioridad">' + selectHtml(PRIORIDADES, r.prioridad, 'prioridad', r.id) + '</td>' +
+          '<td data-label="Type de poste"><input class="cell-input" data-field="tipo" value="' + esc(r.tipo) +
+            '" placeholder="Type de poste ' + (i + 1) + '"></td>' +
+          '<td data-label="Pourquoi \u00e7a m\u2019int\u00e9resse ?"><textarea class="cell-input" data-field="porQue" ' +
+            'rows="1" placeholder="Ce qui t\u2019attire dans ce type de travail">' + esc(r.porQue) + '</textarea></td>' +
+          '<td data-label="Niveau de fran\u00e7ais">' + selectHtml(NIVEAUX, r.nivelFrances, 'nivelFrances') + '</td>' +
+          '<td data-label="Priorit\u00e9">' + selectHtml(PRIORITES, r.prioridad, 'prioridad') + '</td>' +
           '<td class="cell-actions"><button class="row-del" type="button" data-del="1" ' +
-            'aria-label="Quitar tipo de puesto">×</button></td>' +
+            'aria-label="Retirer ce type de poste">\u00d7</button></td>' +
         '</tr>';
       }).join('');
     }
     $('jobtypes-hint').textContent = state.jobTypes.length
-      ? 'Cada tipo de puesto tiene su propia tabla de seguimiento abajo.'
+      ? 'Chaque type de poste a son propre tableau de suivi plus bas.'
       : '';
     autoGrowAll(body);
-  }
-
-  function jobTypeById(id) {
-    return state.jobTypes.filter(function (r) { return r.id === id; })[0];
   }
 
   $('jobtypes-body').addEventListener('input', function (e) {
     var field = e.target.getAttribute('data-field');
     if (!field) return;
-    var tr = e.target.closest('tr');
-    var row = jobTypeById(tr.getAttribute('data-id'));
+    var row = byId(state.jobTypes, e.target.closest('tr').getAttribute('data-id'));
     if (!row) return;
     row[field] = e.target.value;
     if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
-    // El nombre del tipo titula su tabla de seguimiento: se actualiza en vivo.
     if (field === 'tipo') updateTrackingTitle(row);
     enqueue('jobtype:' + row.id, 'upsertJobType', row);
   });
@@ -628,29 +701,33 @@
   $('jobtypes-body').addEventListener('change', function (e) {
     var field = e.target.getAttribute('data-field');
     if (!field || e.target.tagName !== 'SELECT') return;
-    var row = jobTypeById(e.target.getAttribute('data-id'));
+    var row = byId(state.jobTypes, e.target.closest('tr').getAttribute('data-id'));
     if (!row) return;
     row[field] = e.target.value;
-    e.target.setAttribute('data-tone', toneOf(field === 'prioridad' ? PRIORIDADES : NIVELES, e.target.value));
+    e.target.setAttribute('data-tone', toneOf(field === 'prioridad' ? PRIORITES : NIVEAUX, e.target.value));
     enqueue('jobtype:' + row.id, 'upsertJobType', row);
   });
 
   $('jobtypes-body').addEventListener('click', function (e) {
     if (!e.target.getAttribute('data-del')) return;
     var id = e.target.closest('tr').getAttribute('data-id');
-    var row = jobTypeById(id);
+    var row = byId(state.jobTypes, id);
     if (!row) return;
-    var mine = state.applications.filter(function (a) { return a.jobTypeId === id; }).length;
-    var msg = mine
-      ? '¿Quitar «' + (row.tipo || 'este tipo de puesto') + '» y sus ' + mine + ' candidatura(s)?'
-      : '¿Quitar esta fila?';
+    var goneApps = state.applications.filter(function (a) { return a.jobTypeId === id; }).map(function (a) { return a.id; });
+    var msg = goneApps.length
+      ? 'Retirer \u00ab ' + (row.tipo || 'ce type de poste') + ' \u00bb et ses ' + goneApps.length + ' candidature(s) ?'
+      : 'Retirer cette ligne ?';
     if (!confirm(msg)) return;
 
     state.jobTypes = state.jobTypes.filter(function (r) { return r.id !== id; });
     state.applications = state.applications.filter(function (a) { return a.jobTypeId !== id; });
+    ['questions', 'learnings', 'contacts'].forEach(function (k) {
+      state[k] = state[k].filter(function (r) { return goneApps.indexOf(r.applicationId) < 0; });
+    });
     enqueue('jobtype-del:' + id, 'deleteJobType', { id: id });
     renderJobTypes();
     renderTracking();
+    renderAllQuestions();
   });
 
   $('btn-add-jobtype').addEventListener('click', function () {
@@ -666,17 +743,24 @@
     if (rows.length) rows[rows.length - 1].focus();
   });
 
-  // ---------------------------------------------------- 3. seguimiento
+  // ---------------------------------------------------------- 3. suivi
 
   function jobTypeLabel(row, index) {
-    return (row.tipo && row.tipo.trim()) || 'Tipo de puesto ' + (index + 1);
+    return (row.tipo && row.tipo.trim()) || 'Type de poste ' + (index + 1);
+  }
+
+  function detailCount(appId) {
+    return forApp(state.questions, appId).length +
+           forApp(state.learnings, appId).length +
+           forApp(state.contacts, appId).length;
   }
 
   function renderTracking() {
     var box = $('tracking');
 
     if (!state.jobTypes.length) {
-      box.innerHTML = '<p class="empty">Añade arriba un tipo de puesto y aquí aparecerá su tabla de seguimiento.</p>';
+      box.innerHTML = '<p class="empty">Ajoute un type de poste plus haut et son tableau de suivi ' +
+        'appara\u00eetra ici.</p>';
       renderStats();
       return;
     }
@@ -688,20 +772,22 @@
           '<span class="count-hint" data-jt-count>' + countLabel(rows) + '</span></h3>' +
         '<div class="table-wrap"><table class="grid">' +
           '<thead><tr>' +
-            '<th style="width:12%">Fecha</th>' +
-            '<th style="width:18%">Empresa</th>' +
-            '<th style="width:22%">Puesto exacto</th>' +
-            '<th style="width:15%">Fuente / canal</th>' +
-            '<th style="width:15%">Estado</th>' +
-            '<th style="width:18%">Próxima acción</th>' +
-            '<th style="width:44px"><span class="sr-only">Acciones</span></th>' +
+            '<th style="width:11%">Date</th>' +
+            '<th style="width:16%">Entreprise</th>' +
+            '<th style="width:20%">Poste exact</th>' +
+            '<th style="width:13%">Source / canal</th>' +
+            '<th style="width:14%">Statut</th>' +
+            '<th style="width:9%">Note</th>' +
+            '<th style="width:17%">Prochaine action</th>' +
+            '<th style="width:82px"><span class="sr-only">Actions</span></th>' +
           '</tr></thead>' +
           '<tbody>' + (rows.length ? rows.map(applicationHtml).join('')
-            : '<tr><td colspan="7" data-label=""><p class="empty" style="margin:10px">Sin candidaturas todavía.</p></td></tr>') +
+            : '<tr><td colspan="8" data-label=""><p class="empty" style="margin:10px">' +
+              'Aucune candidature pour l\u2019instant.</p></td></tr>') +
           '</tbody>' +
         '</table></div>' +
         '<div class="table-foot"><button class="btn btn--sm" type="button" data-add-app="' + esc(jt.id) + '">' +
-          '+ Añadir candidatura</button></div>' +
+          '+ Ajouter une candidature</button></div>' +
       '</section>';
     }).join('');
 
@@ -712,30 +798,41 @@
   function applicationHtml(a) {
     var fuentes = ['<option value=""></option>'].concat(CHANNELS.map(function (c) {
       return '<option value="' + esc(c.name) + '"' + (c.name === a.fuente ? ' selected' : '') + '>' +
-             esc(c.name.length > 34 ? c.name.slice(0, 32) + '…' : c.name) + '</option>';
+             esc(c.name) + '</option>';
     }));
     // Una fuente escrita a mano (o un canal propio) tiene que seguir apareciendo.
-    if (a.fuente && a.fuente !== 'Otro' && !CHANNELS.some(function (c) { return c.name === a.fuente; })) {
+    if (a.fuente && a.fuente !== 'Autre' && !CHANNELS.some(function (c) { return c.name === a.fuente; })) {
       fuentes.push('<option value="' + esc(a.fuente) + '" selected>' + esc(a.fuente) + '</option>');
     }
-    fuentes.push('<option value="Otro">Otro / contacto directo</option>');
+    fuentes.push('<option value="Autre"' + (a.fuente === 'Autre' ? ' selected' : '') +
+      '>Autre / contact direct</option>');
+
+    var n = detailCount(a.id);
 
     return '<tr data-id="' + esc(a.id) + '">' +
-      '<td data-label="Fecha"><input class="cell-input" type="date" data-field="fecha" value="' + esc(a.fecha) + '"></td>' +
-      '<td data-label="Empresa"><input class="cell-input" data-field="empresa" value="' + esc(a.empresa) + '" placeholder="Empresa"></td>' +
-      '<td data-label="Puesto exacto">' +
-        '<input class="cell-input" data-field="puesto" value="' + esc(a.puesto) + '" placeholder="Título de la oferta">' +
+      '<td data-label="Date"><input class="cell-input" type="date" data-field="fecha" value="' + esc(a.fecha) + '"></td>' +
+      '<td data-label="Entreprise"><input class="cell-input" data-field="empresa" value="' + esc(a.empresa) +
+        '" placeholder="Entreprise"></td>' +
+      '<td data-label="Poste exact">' +
+        '<input class="cell-input" data-field="puesto" value="' + esc(a.puesto) +
+          '" placeholder="Titre de l\u2019offre">' +
         '<div class="cell-sub">' +
           '<input class="cell-sub-input" data-field="enlace" value="' + esc(a.enlace) +
-            '" placeholder="Enlace a la oferta (opcional)" inputmode="url" spellcheck="false">' +
+            '" placeholder="Lien de l\u2019offre (optionnel)" inputmode="url" spellcheck="false">' +
           linkOutHtml(a.enlace) +
         '</div>' +
       '</td>' +
-      '<td data-label="Fuente / canal"><select class="cell-select" data-field="fuente">' + fuentes.join('') + '</select></td>' +
-      '<td data-label="Estado">' + selectHtml(ESTADOS, a.estado, 'estado', a.id) + '</td>' +
-      '<td data-label="Próxima acción"><input class="cell-input" data-field="proximaAccion" value="' + esc(a.proximaAccion) +
-        '" placeholder="Ej.: escribir en 10 días"></td>' +
-      '<td class="cell-actions"><button class="row-del" type="button" data-del="1" aria-label="Quitar candidatura">×</button></td>' +
+      '<td data-label="Source / canal"><select class="cell-select" data-field="fuente">' +
+        fuentes.join('') + '</select></td>' +
+      '<td data-label="Statut">' + selectHtml(STATUTS, a.estado, 'estado') + '</td>' +
+      '<td data-label="Note">' + selectHtml(NOTES, a.nota, 'nota') + '</td>' +
+      '<td data-label="Prochaine action"><input class="cell-input" data-field="proximaAccion" value="' +
+        esc(a.proximaAccion) + '" placeholder="Ex. : relancer dans 10 jours"></td>' +
+      '<td class="cell-actions cell-actions--wide">' +
+        '<button class="btn-fiche" type="button" data-fiche="1" title="Ouvrir la fiche d\u00e9taill\u00e9e">Fiche' +
+          (n ? '<span class="fiche-badge">' + n + '</span>' : '') + '</button>' +
+        '<button class="row-del" type="button" data-del="1" aria-label="Retirer cette candidature">\u00d7</button>' +
+      '</td>' +
     '</tr>';
   }
 
@@ -743,37 +840,34 @@
   function linkOutHtml(value) {
     if (!String(value || '').trim()) return '<span class="link-out" data-link-out hidden></span>';
     return '<a class="link-out" data-link-out href="' + esc(normalizeUrl(value)) +
-           '" target="_blank" rel="noopener" title="Abrir la oferta">↗</a>';
+           '" target="_blank" rel="noopener" title="Ouvrir l\u2019offre">\u2197</a>';
   }
 
-  /** Acepta que se pegue «empresa.fr/oferta» sin el https:// delante. */
-  function normalizeUrl(value) {
-    var v = String(value || '').trim();
-    if (!v) return '';
-    // Solo http(s): cualquier otra cosa se trata como dominio y se le pone
-    // https:// delante, para que no pueda colarse un javascript: en el href.
-    return /^https?:\/\//i.test(v) ? v : 'https://' + v;
+  function refreshLinkOut(input) {
+    var box = input.closest('.cell-sub');
+    if (!box) return;
+    var old = box.querySelector('[data-link-out]');
+    var fresh = document.createElement('div');
+    fresh.innerHTML = linkOutHtml(input.value);
+    if (old) box.replaceChild(fresh.firstChild, old);
   }
 
   function countLabel(rows) {
     if (!rows.length) return '';
-    var sent = rows.filter(function (r) { return r.estado && r.estado !== 'Por mandar'; }).length;
-    return rows.length + (rows.length === 1 ? ' candidatura' : ' candidaturas') +
-           (sent ? ' · ' + sent + ' en marcha' : '');
-  }
-
-  function appById(id) {
-    return state.applications.filter(function (a) { return a.id === id; })[0];
+    var sent = rows.filter(function (r) { return STATUTS_ENVOYES.indexOf(r.estado) >= 0; }).length;
+    return rows.length + (rows.length === 1 ? ' candidature' : ' candidatures') +
+           (sent ? ' \u00b7 ' + sent + ' en cours' : '');
   }
 
   $('tracking').addEventListener('input', function (e) {
     var field = e.target.getAttribute('data-field');
     if (!field) return;
-    var row = appById(e.target.closest('tr').getAttribute('data-id'));
+    var row = byId(state.applications, e.target.closest('tr').getAttribute('data-id'));
     if (!row) return;
     row[field] = e.target.value;
     if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
     if (field === 'enlace') refreshLinkOut(e.target);
+    if (field === 'empresa') refreshQuestionCompany(row);
     enqueue('app:' + row.id, 'upsertApplication', row);
   });
 
@@ -781,14 +875,15 @@
     var field = e.target.getAttribute('data-field');
     if (!field || e.target.tagName !== 'SELECT') return;
     var tr = e.target.closest('tr');
-    var row = appById(tr.getAttribute('data-id'));
+    var row = byId(state.applications, tr.getAttribute('data-id'));
     if (!row) return;
     row[field] = e.target.value;
     if (field === 'estado') {
-      e.target.setAttribute('data-tone', toneOf(ESTADOS, e.target.value));
+      e.target.setAttribute('data-tone', toneOf(STATUTS, e.target.value));
       refreshCounts(tr.closest('section[data-jt]'));
       renderStats();
     }
+    if (field === 'nota') e.target.setAttribute('data-tone', toneOf(NOTES, e.target.value));
     enqueue('app:' + row.id, 'upsertApplication', row);
   });
 
@@ -796,15 +891,22 @@
     var addFor = e.target.getAttribute('data-add-app');
     if (addFor) return addApplication(addFor);
 
+    var fiche = e.target.closest('[data-fiche]');
+    if (fiche) return openDetail(fiche.closest('tr').getAttribute('data-id'));
+
     if (!e.target.getAttribute('data-del')) return;
-    var tr = e.target.closest('tr');
-    var id = tr.getAttribute('data-id');
-    var row = appById(id);
+    var id = e.target.closest('tr').getAttribute('data-id');
+    var row = byId(state.applications, id);
     if (!row) return;
-    if ((row.empresa || row.puesto) && !confirm('¿Quitar la candidatura de «' + (row.empresa || row.puesto) + '»?')) return;
+    var label = row.empresa || row.puesto;
+    if (label && !confirm('Retirer la candidature chez \u00ab ' + label + ' \u00bb et tout son d\u00e9tail ?')) return;
     state.applications = state.applications.filter(function (a) { return a.id !== id; });
+    ['questions', 'learnings', 'contacts'].forEach(function (k) {
+      state[k] = state[k].filter(function (r) { return r.applicationId !== id; });
+    });
     enqueue('app-del:' + id, 'deleteApplication', { id: id });
     renderTracking();
+    renderAllQuestions();
   });
 
   function addApplication(jobTypeId) {
@@ -812,7 +914,9 @@
     var row = {
       id: uid(), profileId: state.profileId, jobTypeId: jobTypeId,
       position: nextPosition(mine),
-      fecha: today(), empresa: '', puesto: '', fuente: '', estado: '', proximaAccion: '', enlace: ''
+      fecha: today(), empresa: '', puesto: '', fuente: '', estado: '', proximaAccion: '',
+      enlace: '', nota: '', misiones: '', sueldo: '', modalidad: '', ventajas: '',
+      ubicacion: '', lat: '', lon: ''
     };
     state.applications.push(row);
     enqueue('app:' + row.id, 'upsertApplication', row);
@@ -832,15 +936,6 @@
     if (title) title.textContent = jobTypeLabel(jobTypeRow, index);
   }
 
-  function refreshLinkOut(input) {
-    var box = input.closest('.cell-sub');
-    if (!box) return;
-    var old = box.querySelector('[data-link-out]');
-    var fresh = document.createElement('div');
-    fresh.innerHTML = linkOutHtml(input.value);
-    if (old) box.replaceChild(fresh.firstChild, old);
-  }
-
   function refreshCounts(section) {
     if (!section) return;
     var id = section.getAttribute('data-jt');
@@ -850,17 +945,17 @@
 
   function renderStats() {
     var all = state.applications;
-    var enviadas = all.filter(function (a) {
-      return ['Enviada', 'Seguimiento hecho', 'Respuesta recibida', 'Entrevista', 'Aceptada', 'Sin respuesta', 'Rechazada'].indexOf(a.estado) >= 0;
+    var envoyees = all.filter(function (a) { return STATUTS_ENVOYES.indexOf(a.estado) >= 0; }).length;
+    var entretiens = all.filter(function (a) {
+      return a.estado === 'Entretien' || a.estado === 'Accept\u00e9e';
     }).length;
-    var entrevistas = all.filter(function (a) { return a.estado === 'Entrevista' || a.estado === 'Aceptada'; }).length;
-    var pendientes = all.filter(function (a) { return !a.estado; }).length;
+    var aEnvoyer = all.filter(function (a) { return !a.estado; }).length;
 
     var cards = [
-      { value: all.length, label: all.length === 1 ? 'candidatura' : 'candidaturas' },
-      { value: enviadas, label: 'ya enviadas' },
-      { value: entrevistas, label: entrevistas === 1 ? 'entrevista' : 'entrevistas' },
-      { value: pendientes, label: 'por mandar' }
+      { value: all.length, label: all.length === 1 ? 'candidature' : 'candidatures' },
+      { value: envoyees, label: 'd\u00e9j\u00e0 envoy\u00e9es' },
+      { value: entretiens, label: entretiens === 1 ? 'entretien' : 'entretiens' },
+      { value: aEnvoyer, label: '\u00e0 envoyer' }
     ];
 
     $('stats').innerHTML = all.length ? cards.map(function (c) {
@@ -869,28 +964,457 @@
     }).join('') : '';
   }
 
-  // ---------------------------------------------------------- pequeñeces
+  // ------------------------------------------- 4. questions d'entretien
 
-  function today() {
-    var d = new Date();
-    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-  }
-  function pad(n) { return (n < 10 ? '0' : '') + n; }
-
-  function cssEsc(s) {
-    return window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, '\\$&');
+  function appLabel(app) {
+    if (!app) return '\u2014';
+    return app.empresa || app.puesto || 'Candidature sans nom';
   }
 
-  function autoGrow(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.max(el.scrollHeight, 22) + 'px';
+  function renderAllQuestions() {
+    var box = $('all-questions');
+    if (!state.questions.length) {
+      box.innerHTML = '<p class="empty">Les questions s\u2019ajoutent depuis la fiche d\u2019une candidature ' +
+        '(bouton <strong>Fiche</strong> dans le tableau de suivi). Elles se retrouvent toutes ici.</p>';
+      return;
+    }
+
+    // Ordenadas por candidatura, siguiendo el orden de las candidaturas.
+    var order = {};
+    state.applications.forEach(function (a, i) { order[a.id] = i; });
+    var rows = state.questions.slice().sort(function (x, y) {
+      var dx = (order[x.applicationId] === undefined ? 9999 : order[x.applicationId]);
+      var dy = (order[y.applicationId] === undefined ? 9999 : order[y.applicationId]);
+      return dx - dy || Number(x.position || 0) - Number(y.position || 0);
+    });
+
+    box.innerHTML = '<div class="table-wrap"><table class="grid">' +
+      '<thead><tr>' +
+        '<th style="width:30%">Question pos\u00e9e</th>' +
+        '<th style="width:16%">Entreprise</th>' +
+        '<th style="width:11%">Su r\u00e9pondre ?</th>' +
+        '<th style="width:39%">R\u00e9ponse \u00e0 donner la prochaine fois</th>' +
+        '<th style="width:44px"><span class="sr-only">Actions</span></th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function (q) {
+        var app = byId(state.applications, q.applicationId);
+        return '<tr data-qid="' + esc(q.id) + '">' +
+          '<td data-label="Question pos\u00e9e"><textarea class="cell-input" data-qfield="question" rows="1" ' +
+            'placeholder="La question">' + esc(q.question) + '</textarea></td>' +
+          '<td data-label="Entreprise"><button class="link-btn" type="button" data-open-app="' +
+            esc(q.applicationId) + '">' + esc(appLabel(app)) + '</button></td>' +
+          '<td data-label="Su r\u00e9pondre ?">' + selectHtml(REPONDU, q.answered, 'answered', ' data-qsel="1"') + '</td>' +
+          '<td data-label="R\u00e9ponse \u00e0 donner"><textarea class="cell-input" data-qfield="answer" rows="1" ' +
+            'placeholder="Ce qu\u2019il faudrait r\u00e9pondre">' + esc(q.answer) + '</textarea></td>' +
+          '<td class="cell-actions"><button class="row-del" type="button" data-qdel="1" ' +
+            'aria-label="Retirer cette question">\u00d7</button></td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>' +
+      '<div class="table-foot"><span class="count-hint">' + state.questions.length +
+        (state.questions.length === 1 ? ' question' : ' questions') + ' au total</span></div>';
+
+    autoGrowAll(box);
   }
-  function autoGrowAll(root) {
-    Array.prototype.forEach.call(root.querySelectorAll('textarea'), autoGrow);
+
+  /** El nombre de la empresa sale en la seccion 4: se refresca en vivo. */
+  function refreshQuestionCompany(app) {
+    var cells = $('all-questions').querySelectorAll('[data-open-app="' + cssEsc(app.id) + '"]');
+    Array.prototype.forEach.call(cells, function (el) { el.textContent = appLabel(app); });
+  }
+
+  $('all-questions').addEventListener('input', function (e) {
+    var field = e.target.getAttribute('data-qfield');
+    if (!field) return;
+    var q = byId(state.questions, e.target.closest('tr').getAttribute('data-qid'));
+    if (!q) return;
+    q[field] = e.target.value;
+    autoGrow(e.target);
+    enqueue('question:' + q.id, 'upsertQuestion', q);
+  });
+
+  $('all-questions').addEventListener('change', function (e) {
+    if (!e.target.getAttribute('data-qsel')) return;
+    var q = byId(state.questions, e.target.closest('tr').getAttribute('data-qid'));
+    if (!q) return;
+    q.answered = e.target.value;
+    e.target.setAttribute('data-tone', toneOf(REPONDU, e.target.value));
+    enqueue('question:' + q.id, 'upsertQuestion', q);
+  });
+
+  $('all-questions').addEventListener('click', function (e) {
+    var open = e.target.closest('[data-open-app]');
+    if (open) return openDetail(open.getAttribute('data-open-app'));
+
+    if (!e.target.getAttribute('data-qdel')) return;
+    var id = e.target.closest('tr').getAttribute('data-qid');
+    if (!confirm('Retirer cette question ?')) return;
+    state.questions = state.questions.filter(function (q) { return q.id !== id; });
+    enqueue('question-del:' + id, 'deleteQuestion', { id: id });
+    renderAllQuestions();
+    renderTracking();
+  });
+
+  // =====================================================================
+  //  Fiche detaillee
+  // =====================================================================
+
+  function fieldBlock(label, control) {
+    return '<div class="field"><label>' + esc(label) + '</label>' + control + '</div>';
+  }
+
+  function openDetail(appId) {
+    var app = byId(state.applications, appId);
+    if (!app) return;
+    openAppId = appId;
+
+    $('modal-title').textContent = appLabel(app);
+    $('modal-sub').textContent = [app.puesto, app.fecha].filter(Boolean).join(' \u00b7 ') ||
+      'Fiche de candidature';
+
+    $('modal-body').innerHTML =
+      '<section class="md-block">' +
+        '<h3 class="md-h">Le poste</h3>' +
+        '<div class="md-grid">' +
+          fieldBlock('Fourchette de salaire', '<input class="input" data-af="sueldo" value="' + esc(app.sueldo) +
+            '" placeholder="Ex. : 32-38 k\u20ac brut">') +
+          fieldBlock('Modalit\u00e9', selectHtml(MODALITES, app.modalidad, 'modalidad', ' data-af-sel="modalidad"')) +
+          fieldBlock('Note globale', selectHtml(NOTES, app.nota, 'nota', ' data-af-sel="nota"')) +
+          fieldBlock('Lien de l\u2019offre', '<input class="input" data-af="enlace" value="' + esc(app.enlace) +
+            '" placeholder="https://\u2026" spellcheck="false">') +
+        '</div>' +
+        fieldBlock('Missions', '<textarea class="input" data-af="misiones" rows="3" ' +
+          'placeholder="Ce que le poste demande au quotidien">' + esc(app.misiones) + '</textarea>') +
+        fieldBlock('Avantages', '<textarea class="input" data-af="ventajas" rows="2" ' +
+          'placeholder="Ex. : tickets restaurant, 50 % transport, 2 jours de t\u00e9l\u00e9travail">' +
+          esc(app.ventajas) + '</textarea>') +
+      '</section>' +
+
+      '<section class="md-block">' +
+        '<h3 class="md-h">Lieu</h3>' +
+        '<div class="md-geo">' +
+          '<input class="input" id="md-address" value="' + esc(app.ubicacion) +
+            '" placeholder="Adresse ou quartier (ex. : 1 place Kl\u00e9ber, Strasbourg)">' +
+          '<button class="btn btn--sm" type="button" id="md-geocode">Chercher</button>' +
+        '</div>' +
+        '<p class="md-hint" id="md-geo-hint">Cherche une adresse, ou clique directement sur la carte ' +
+          'pour poser le point.</p>' +
+        '<div id="md-map" class="md-map"></div>' +
+      '</section>' +
+
+      '<section class="md-block">' +
+        '<h3 class="md-h">Questions pos\u00e9es en entretien</h3>' +
+        '<div id="md-questions"></div>' +
+        '<button class="btn btn--sm" type="button" id="md-add-question">+ Ajouter une question</button>' +
+      '</section>' +
+
+      '<section class="md-block">' +
+        '<h3 class="md-h">Ce que j\u2019ai appris</h3>' +
+        '<div id="md-learnings"></div>' +
+        '<button class="btn btn--sm" type="button" id="md-add-learning">+ Ajouter une info</button>' +
+      '</section>' +
+
+      '<section class="md-block">' +
+        '<h3 class="md-h">Contacts dans l\u2019entreprise</h3>' +
+        '<div id="md-contacts"></div>' +
+        '<button class="btn btn--sm" type="button" id="md-add-contact">+ Ajouter un contact</button>' +
+      '</section>';
+
+    renderMdQuestions();
+    renderMdLearnings();
+    renderMdContacts();
+
+    $('modal').hidden = false;
+    document.body.classList.add('modal-open');
+    autoGrowAll($('modal-body'));
+
+    // Leaflet necesita que el contenedor ya sea visible para medirse.
+    initMap(app);
+
+    $('md-add-question').addEventListener('click', addQuestion);
+    $('md-add-learning').addEventListener('click', addLearning);
+    $('md-add-contact').addEventListener('click', addContact);
+    $('md-geocode').addEventListener('click', geocode);
+    $('md-address').addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); geocode(); }
+    });
+  }
+
+  function closeDetail() {
+    if (map) { map.remove(); map = null; marker = null; }
+    $('modal').hidden = true;
+    document.body.classList.remove('modal-open');
+    openAppId = null;
+    // La nota, el enlace y los contadores se ven en las tablas: hay que refrescarlas.
+    renderTracking();
+    renderAllQuestions();
+  }
+
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-close-modal]')) closeDetail();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('modal').hidden) closeDetail();
+  });
+
+  /** Campos de la propia candidatura, editados dentro de la ficha. */
+  $('modal-body').addEventListener('input', function (e) {
+    var t = e.target;
+    var af = t.getAttribute('data-af');
+    var mq = t.getAttribute('data-mq');
+    var ml = t.getAttribute('data-ml');
+    var mc = t.getAttribute('data-mc');
+
+    if (af) {
+      var app = byId(state.applications, openAppId);
+      if (!app) return;
+      app[af] = t.value;
+      if (t.tagName === 'TEXTAREA') autoGrow(t);
+      enqueue('app:' + app.id, 'upsertApplication', app);
+    } else if (mq) {
+      var q = byId(state.questions, t.closest('[data-qid]').getAttribute('data-qid'));
+      if (!q) return;
+      q[mq] = t.value; autoGrow(t);
+      enqueue('question:' + q.id, 'upsertQuestion', q);
+    } else if (ml) {
+      var l = byId(state.learnings, t.closest('[data-lid]').getAttribute('data-lid'));
+      if (!l) return;
+      l[ml] = t.value; autoGrow(t);
+      enqueue('learning:' + l.id, 'upsertLearning', l);
+    } else if (mc) {
+      var c = byId(state.contacts, t.closest('[data-cid]').getAttribute('data-cid'));
+      if (!c) return;
+      c[mc] = t.value;
+      enqueue('contact:' + c.id, 'upsertContact', c);
+    }
+  });
+
+  $('modal-body').addEventListener('change', function (e) {
+    var af = e.target.getAttribute('data-af-sel');
+    if (af) {
+      var app = byId(state.applications, openAppId);
+      if (!app) return;
+      app[af] = e.target.value;
+      e.target.setAttribute('data-tone', toneOf(af === 'nota' ? NOTES : MODALITES, e.target.value));
+      enqueue('app:' + app.id, 'upsertApplication', app);
+      return;
+    }
+    if (!e.target.getAttribute('data-mq-sel')) return;
+    var q = byId(state.questions, e.target.closest('[data-qid]').getAttribute('data-qid'));
+    if (!q) return;
+    q.answered = e.target.value;
+    e.target.setAttribute('data-tone', toneOf(REPONDU, e.target.value));
+    enqueue('question:' + q.id, 'upsertQuestion', q);
+  });
+
+  $('modal-body').addEventListener('click', function (e) {
+    if (e.target.getAttribute('data-mq-del')) {
+      var qid = e.target.closest('[data-qid]').getAttribute('data-qid');
+      if (!confirm('Retirer cette question ?')) return;
+      state.questions = state.questions.filter(function (q) { return q.id !== qid; });
+      enqueue('question-del:' + qid, 'deleteQuestion', { id: qid });
+      renderMdQuestions();
+    } else if (e.target.getAttribute('data-ml-del')) {
+      var lid = e.target.closest('[data-lid]').getAttribute('data-lid');
+      state.learnings = state.learnings.filter(function (l) { return l.id !== lid; });
+      enqueue('learning-del:' + lid, 'deleteLearning', { id: lid });
+      renderMdLearnings();
+    } else if (e.target.getAttribute('data-mc-del')) {
+      var cid = e.target.closest('[data-cid]').getAttribute('data-cid');
+      state.contacts = state.contacts.filter(function (c) { return c.id !== cid; });
+      enqueue('contact-del:' + cid, 'deleteContact', { id: cid });
+      renderMdContacts();
+    }
+  });
+
+  // ------------------------------------------------- listas de la ficha
+
+  function renderMdQuestions() {
+    var rows = forApp(state.questions, openAppId);
+    $('md-questions').innerHTML = rows.length ? rows.map(function (q) {
+      return '<div class="md-row" data-qid="' + esc(q.id) + '">' +
+        '<div class="md-row-main">' +
+          '<textarea class="input" data-mq="question" rows="1" ' +
+            'placeholder="La question qu\u2019on t\u2019a pos\u00e9e">' + esc(q.question) + '</textarea>' +
+          '<textarea class="input md-answer" data-mq="answer" rows="1" ' +
+            'placeholder="R\u00e9ponse \u00e0 donner la prochaine fois">' + esc(q.answer) + '</textarea>' +
+        '</div>' +
+        '<div class="md-row-side">' +
+          '<label class="md-mini">Su r\u00e9pondre ?</label>' +
+          selectHtml(REPONDU, q.answered, 'answered', ' data-mq-sel="1"') +
+        '</div>' +
+        '<button class="row-del" type="button" data-mq-del="1" aria-label="Retirer cette question">\u00d7</button>' +
+      '</div>';
+    }).join('') : '<p class="empty">Aucune question not\u00e9e pour cette candidature.</p>';
+    autoGrowAll($('md-questions'));
+  }
+
+  function renderMdLearnings() {
+    var rows = forApp(state.learnings, openAppId);
+    $('md-learnings').innerHTML = rows.length ? rows.map(function (l) {
+      return '<div class="md-row" data-lid="' + esc(l.id) + '">' +
+        '<div class="md-row-main">' +
+          '<textarea class="input" data-ml="note" rows="1" ' +
+            'placeholder="Ex. : l\u2019\u00e9quipe fait 12 personnes, ils migrent vers React">' +
+            esc(l.note) + '</textarea>' +
+        '</div>' +
+        '<button class="row-del" type="button" data-ml-del="1" aria-label="Retirer cette info">\u00d7</button>' +
+      '</div>';
+    }).join('') : '<p class="empty">Rien de not\u00e9 pour l\u2019instant.</p>';
+    autoGrowAll($('md-learnings'));
+  }
+
+  function renderMdContacts() {
+    var rows = forApp(state.contacts, openAppId);
+    $('md-contacts').innerHTML = rows.length ? rows.map(function (c) {
+      return '<div class="md-row md-contact" data-cid="' + esc(c.id) + '">' +
+        '<div class="md-contact-grid">' +
+          '<input class="input" data-mc="name" value="' + esc(c.name) + '" placeholder="Nom">' +
+          '<input class="input" data-mc="role" value="' + esc(c.role) + '" placeholder="Poste">' +
+          '<input class="input" data-mc="email" type="email" value="' + esc(c.email) +
+            '" placeholder="Courriel" spellcheck="false">' +
+          '<input class="input" data-mc="phone" type="tel" value="' + esc(c.phone) +
+            '" placeholder="T\u00e9l\u00e9phone">' +
+        '</div>' +
+        '<div class="md-contact-links">' +
+          (c.email ? '<a href="mailto:' + esc(c.email) + '" title="\u00c9crire">\u2709</a>' : '') +
+          (c.phone ? '<a href="tel:' + esc(String(c.phone).replace(/\s/g, '')) + '" title="Appeler">\u260e</a>' : '') +
+        '</div>' +
+        '<button class="row-del" type="button" data-mc-del="1" aria-label="Retirer ce contact">\u00d7</button>' +
+      '</div>';
+    }).join('') : '<p class="empty">Aucun contact enregistr\u00e9.</p>';
+  }
+
+  function addQuestion() {
+    var row = {
+      id: uid(), profileId: state.profileId, applicationId: openAppId,
+      position: nextPosition(forApp(state.questions, openAppId)),
+      question: '', answered: '', answer: ''
+    };
+    state.questions.push(row);
+    enqueue('question:' + row.id, 'upsertQuestion', row);
+    renderMdQuestions();
+    focusLast('#md-questions [data-mq="question"]');
+  }
+
+  function addLearning() {
+    var row = {
+      id: uid(), profileId: state.profileId, applicationId: openAppId,
+      position: nextPosition(forApp(state.learnings, openAppId)), note: ''
+    };
+    state.learnings.push(row);
+    enqueue('learning:' + row.id, 'upsertLearning', row);
+    renderMdLearnings();
+    focusLast('#md-learnings [data-ml="note"]');
+  }
+
+  function addContact() {
+    var row = {
+      id: uid(), profileId: state.profileId, applicationId: openAppId,
+      position: nextPosition(forApp(state.contacts, openAppId)),
+      name: '', role: '', email: '', phone: ''
+    };
+    state.contacts.push(row);
+    enqueue('contact:' + row.id, 'upsertContact', row);
+    renderMdContacts();
+    focusLast('#md-contacts [data-mc="name"]');
+  }
+
+  function focusLast(selector) {
+    var els = document.querySelectorAll(selector);
+    if (els.length) els[els.length - 1].focus();
+  }
+
+  // ----------------------------------------------------------- la carte
+
+  function initMap(app) {
+    var box = $('md-map');
+    if (typeof L === 'undefined') {
+      box.innerHTML = '<p class="empty" style="margin:0">La carte n\u2019a pas pu se charger ' +
+        '(pas de connexion ?). L\u2019adresse en texte est quand m\u00eame enregistr\u00e9e.</p>';
+      return;
+    }
+
+    var has = app.lat && app.lon && !isNaN(Number(app.lat)) && !isNaN(Number(app.lon));
+    var center = has ? [Number(app.lat), Number(app.lon)] : STRASBOURG;
+
+    map = L.map(box, { scrollWheelZoom: false }).setView(center, has ? 15 : 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    if (has) placeMarker(center[0], center[1], false);
+    map.on('click', function (e) { placeMarker(e.latlng.lat, e.latlng.lng, true); });
+
+    // El contenedor acaba de aparecer: hay que remedirlo.
+    setTimeout(function () { if (map) map.invalidateSize(); }, 60);
+  }
+
+  function placeMarker(lat, lon, save) {
+    if (!map) return;
+    if (marker) {
+      marker.setLatLng([lat, lon]);
+    } else {
+      marker = L.marker([lat, lon], { draggable: true }).addTo(map);
+      marker.on('dragend', function () {
+        var p = marker.getLatLng();
+        storeLatLon(p.lat, p.lng);
+      });
+    }
+    if (save) storeLatLon(lat, lon);
+  }
+
+  function storeLatLon(lat, lon) {
+    var app = byId(state.applications, openAppId);
+    if (!app) return;
+    app.lat = String(Math.round(lat * 1e6) / 1e6);
+    app.lon = String(Math.round(lon * 1e6) / 1e6);
+    enqueue('app:' + app.id, 'upsertApplication', app);
+    $('md-geo-hint').textContent = 'Point enregistr\u00e9 : ' + app.lat + ', ' + app.lon +
+      ' \u00b7 tu peux le d\u00e9placer en le faisant glisser.';
+  }
+
+  /** Busca la direccion con Nominatim (OpenStreetMap). */
+  function geocode() {
+    var input = $('md-address');
+    var q = input.value.trim();
+    var hint = $('md-geo-hint');
+    var app = byId(state.applications, openAppId);
+    if (!app) return;
+
+    // El texto se guarda tal cual, aunque la busqueda no encuentre nada.
+    app.ubicacion = input.value;
+    enqueue('app:' + app.id, 'upsertApplication', app);
+
+    if (!q) { hint.textContent = '\u00c9cris une adresse pour la chercher.'; return; }
+    if (!map) { hint.textContent = 'La carte n\u2019est pas disponible, mais l\u2019adresse est enregistr\u00e9e.'; return; }
+
+    hint.textContent = 'Recherche\u2026';
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q);
+    fetch(url, { headers: { 'Accept': 'application/json' } })
+      .then(function (r) {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      })
+      .then(function (list) {
+        if (!list || !list.length) {
+          hint.textContent = 'Adresse introuvable. Tu peux poser le point \u00e0 la main ' +
+            'en cliquant sur la carte.';
+          return;
+        }
+        var lat = Number(list[0].lat), lon = Number(list[0].lon);
+        map.setView([lat, lon], 16);
+        placeMarker(lat, lon, true);
+      })
+      .catch(function () {
+        hint.textContent = 'La recherche d\u2019adresse n\u2019a pas r\u00e9pondu. ' +
+          'Clique sur la carte pour poser le point.';
+      });
   }
 
   // =====================================================================
-  //  Arranque
+  //  Demarrage
   // =====================================================================
 
   (function boot() {
@@ -899,7 +1423,7 @@
 
     state.url = url;
     var wanted = localStorage.getItem(LS_PROFILE);
-    show('loading', 'Conectando con la hoja…');
+    show('loading', 'Connexion \u00e0 la feuille\u2026');
 
     api('listProfiles').then(function (data) {
       state.profiles = data.profiles || [];
@@ -908,8 +1432,7 @@
       renderProfiles();
       show('profiles');
     }).catch(function (err) {
-      showBanner('connect-error', 'No se pudo conectar con la hoja: ' + err.message +
-        ' Comprueba la clave o vuelve a pegarla.');
+      showBanner('connect-error', 'Connexion impossible : ' + err.message);
       $('connect-url').value = url;
       show('connect');
     });
