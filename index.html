@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1B7A6B">
+<meta name="description" content="Un solo lugar para tener claro qué buscar y llevar el registro de la búsqueda de empleo en Estrasburgo.">
+<title>Mi búsqueda de empleo en Estrasburgo</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<!-- ============================================================
+     1. Conexión: pedir la URL de la app web de Google Sheets
+     ============================================================ -->
+<main id="view-connect" class="sheet sheet--narrow" hidden>
+  <h1 class="doc-title">🎯 Mi búsqueda de empleo en Estrasburgo</h1>
+  <p class="doc-subtitle">Un solo lugar para tener claro qué buscar y llevar el registro de todo</p>
+
+  <div id="connect-error" class="banner" hidden></div>
+
+  <p class="callout">
+    Los datos se guardan en <strong>tu propia hoja de Google Sheets</strong>. Pega aquí la clave de
+    conexión (la URL de la app web que has publicado desde la hoja). Se queda guardada en este
+    dispositivo, no está escrita en el código de la página.
+  </p>
+
+  <form id="connect-form" autocomplete="off">
+    <div class="field" style="margin-top:20px">
+      <label for="connect-url">Clave de conexión de la hoja</label>
+      <input id="connect-url" class="input" type="url" inputmode="url" spellcheck="false"
+             placeholder="https://script.google.com/macros/s/…/exec" required>
+      <p class="hint">Empieza por <code>https://script.google.com/macros/s/</code> y acaba en <code>/exec</code>.</p>
+    </div>
+    <button id="connect-submit" class="btn btn--primary btn--block" type="submit">Conectar con mi hoja</button>
+  </form>
+
+  <details class="help">
+    <summary>¿Cómo consigo esa clave? (una sola vez, 3 minutos)</summary>
+    <ol>
+      <li>Crea una hoja nueva en <a href="https://sheets.new" target="_blank" rel="noopener">Google Sheets</a>.</li>
+      <li>Menú <strong>Extensiones → Apps Script</strong>.</li>
+      <li>Borra lo que haya y pega el contenido del archivo <code>apps-script/Code.gs</code> de este repositorio. Guarda.</li>
+      <li>Botón <strong>Implementar → Nueva implementación</strong>, tipo <strong>Aplicación web</strong>.</li>
+      <li>«Ejecutar como»: <strong>Yo</strong>. «Quién tiene acceso»: <strong>Cualquier usuario</strong>. Implementar y autorizar.</li>
+      <li>Copia la <strong>URL de la aplicación web</strong> (acaba en <code>/exec</code>) y pégala arriba.</li>
+    </ol>
+  </details>
+
+  <p class="doc-footer">La misma clave sirve para las dos personas: pegadla en cada teléfono y compartís la misma hoja.</p>
+</main>
+
+<!-- ============================================================
+     2. Elegir perfil
+     ============================================================ -->
+<main id="view-profiles" class="sheet sheet--narrow" hidden>
+  <h1 class="doc-title">🎯 Mi búsqueda de empleo en Estrasburgo</h1>
+  <p class="doc-subtitle">¿Quién eres?</p>
+
+  <div id="profiles-error" class="banner" hidden></div>
+
+  <div id="profile-list" class="profile-list" aria-label="Perfiles disponibles"></div>
+
+  <form id="new-profile-form" autocomplete="off">
+    <div class="field">
+      <label for="new-profile-name">Crear un perfil nuevo</label>
+      <input id="new-profile-name" class="input" type="text" maxlength="40"
+             placeholder="Tu nombre" required>
+    </div>
+    <button class="btn btn--primary btn--block" type="submit">Crear perfil</button>
+  </form>
+
+  <div class="row-actions" style="margin-top:22px">
+    <button id="btn-change-key" class="btn btn--ghost btn--sm" type="button">Cambiar la clave de la hoja</button>
+    <button id="btn-reload-profiles" class="btn btn--ghost btn--sm" type="button">Recargar</button>
+  </div>
+</main>
+
+<!-- ============================================================
+     3. El documento
+     ============================================================ -->
+<main id="view-app" class="sheet" hidden>
+
+  <div class="topbar">
+    <span class="profile-chip">
+      <span id="profile-avatar" class="avatar" aria-hidden="true"></span>
+      <span id="profile-name"></span>
+    </span>
+    <span class="topbar-spacer"></span>
+    <span id="save-state" class="save-state" data-state="idle" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span><span id="save-state-text">Al día</span>
+    </span>
+    <button id="btn-switch-profile" class="btn btn--sm" type="button">Cambiar de perfil</button>
+  </div>
+
+  <div id="app-error" class="banner" hidden></div>
+
+  <h1 class="doc-title">🎯 Mi búsqueda de empleo en Estrasburgo</h1>
+  <p class="doc-subtitle">Un solo lugar para tener claro qué buscar y llevar el registro de todo</p>
+  <p class="doc-note">
+    Este documento se va llenando poco a poco, sin presión. La idea es que sea una herramienta útil
+    de verdad, no un formulario pesado. Todo lo que escribas se guarda solo.
+  </p>
+
+  <!-- 1. Canales -->
+  <section aria-labelledby="h-canales">
+    <h2 id="h-canales" class="section">1. Canales de búsqueda</h2>
+    <p class="section-lead">Lugares donde buscar ofertas y hacer contactos. Marca los que ya tengas listos:</p>
+    <div id="channels" class="channels"></div>
+    <div class="table-foot">
+      <button id="btn-add-channel" class="btn btn--sm" type="button">+ Añadir otro canal</button>
+      <span id="channels-count" class="count-hint"></span>
+    </div>
+  </section>
+
+  <!-- 2. Tipos de puesto -->
+  <section aria-labelledby="h-tipos">
+    <h2 id="h-tipos" class="section">2. Tipos de puesto que te interesan</h2>
+    <p class="doc-note">
+      No hace falta un solo tipo — está bien tener varias opciones abiertas en paralelo (por ejemplo:
+      marketing, comunicación/redes, y algo más accesible como atención al cliente bilingüe).
+    </p>
+    <div class="table-wrap">
+      <table class="grid">
+        <thead>
+          <tr>
+            <th style="width:22%">Tipo de puesto</th>
+            <th style="width:33%">¿Por qué me interesa?</th>
+            <th style="width:20%">Nivel de francés necesario</th>
+            <th style="width:17%">Prioridad</th>
+            <th style="width:44px"><span class="sr-only">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody id="jobtypes-body"></tbody>
+      </table>
+    </div>
+    <div class="table-foot">
+      <button id="btn-add-jobtype" class="btn btn--sm" type="button">+ Añadir tipo de puesto</button>
+      <span id="jobtypes-hint" class="count-hint"></span>
+    </div>
+  </section>
+
+  <!-- 3. Seguimiento -->
+  <section aria-labelledby="h-seguimiento">
+    <h2 id="h-seguimiento" class="section">3. Seguimiento de candidaturas</h2>
+    <p class="section-lead">Una tabla por tipo de puesto, para ver de un vistazo qué se ha mandado y qué falta por hacer.</p>
+    <div id="stats" class="stats"></div>
+    <div id="tracking"></div>
+  </section>
+
+  <hr class="rule">
+  <p class="doc-footer">
+    Todo se guarda en tu hoja de Google Sheets ·
+    <button id="btn-reload-app" class="btn btn--ghost btn--sm" type="button">Recargar datos</button>
+    <button id="btn-change-key-app" class="btn btn--ghost btn--sm" type="button">Cambiar clave</button>
+  </p>
+</main>
+
+<!-- pantalla de carga -->
+<div id="view-loading" class="sheet sheet--narrow" style="text-align:center">
+  <p class="doc-title" style="font-size:24px">🎯</p>
+  <p class="doc-subtitle" id="loading-text">Conectando con la hoja…</p>
+</div>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
