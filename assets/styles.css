@@ -593,3 +593,51 @@ details.help code {
   .btn, .row-del, .save-state, .table-foot, .topbar .btn { display: none !important; }
   .cell-input, .cell-select { border: 0 !important; }
 }
+
+/* ------------------------------- enlace opcional de la oferta */
+
+.cell-sub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 8px;
+}
+
+.cell-sub-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+.cell-sub-input:hover { border-color: var(--line); }
+.cell-sub-input:focus {
+  outline: 2px solid var(--teal);
+  outline-offset: -1px;
+  background: #fff;
+  color: var(--ink);
+}
+.cell-sub-input::placeholder { color: #C3C8C6; font-style: italic; }
+
+a.link-out {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px; height: 22px;
+  border-radius: 5px;
+  color: var(--teal);
+  font-size: 13px;
+  text-decoration: none;
+}
+a.link-out:hover { background: var(--teal-soft); text-decoration: none; }
+span.link-out { flex: none; width: 22px; }
+
+@media (max-width: 760px) {
+  .cell-sub { padding: 4px 4px 0; }
+  .cell-sub-input { font-size: 13.5px; padding: 6px; border-color: var(--line); }
+  a.link-out { width: 30px; height: 30px; font-size: 15px; }
+}

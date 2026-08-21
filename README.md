@@ -63,6 +63,28 @@ Para usarla desde el móvil, la opción cómoda es Pages (o cualquier hosting) y
 
 ---
 
+## Multiusuario: dos personas, una hoja
+
+Cada fila de la hoja lleva la columna `profileId`, y toda lectura filtra por ella: el
+perfil que abres solo ve lo suyo. Los datos **no se cruzan**, ni cuando los dos usáis el
+mismo nombre de puesto, la misma empresa o marcáis el mismo canal.
+
+- Cada escritura viaja con su `profileId`, así que un cambio pendiente se guarda en el
+  perfil correcto aunque ya hayas cambiado de perfil en la pantalla.
+- El `LockService` del script serializa las escrituras: dos cambios a la vez se ordenan
+  en vez de pisarse.
+- Borrar un tipo de puesto se lleva sus candidaturas; borrar un perfil se lleva todo lo
+  suyo. Ninguno de los dos toca al otro perfil.
+- La fila de un canal tiene un id derivado del perfil y del canal, no aleatorio: si abres
+  **el mismo perfil** en el móvil y en el portátil, los dos escriben en la misma fila en
+  vez de crear duplicados.
+
+**Lo que esto no es: privacidad.** Cualquiera con la clave de la hoja ve la lista de
+perfiles y puede abrir cualquiera de ellos. Están separados, no protegidos con
+contraseña. Para dos personas que comparten la hoja a propósito es lo que se quiere; si
+hiciera falta que uno no viera lo del otro, harían falta dos hojas separadas (dos claves
+distintas), y eso funciona hoy sin cambiar nada del código.
+
 ## Cómo funciona
 
 ```
@@ -102,7 +124,7 @@ interna a `googleusercontent.com`.
 |---|---|
 | `Profiles` | `id`, `name`, `createdAt` |
 | `JobTypes` | `id`, `profileId`, `position`, `tipo`, `porQue`, `nivelFrances`, `prioridad` |
-| `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion` |
+| `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion`, `enlace` |
 | `Channels` | `id`, `profileId`, `channelKey`, `name`, `url`, `hecho`, `notas` |
 
 Se puede editar a mano en Sheets sin problema, siempre que no se toque la columna `id`
@@ -121,7 +143,10 @@ candidaturas; borrar un perfil borra todo lo suyo.
    francés y la prioridad.
 3. **Seguimiento de candidaturas** — una tabla por tipo de puesto, generada
    automáticamente a partir de la sección 2, más un resumen (candidaturas, enviadas,
-   entrevistas, por mandar). El estado se colorea solo.
+   entrevistas, por mandar). El estado se colorea solo. Cada candidatura guarda además
+   el **enlace a la oferta**, opcional: va debajo del título del puesto y, en cuanto hay
+   algo escrito, aparece una flecha ↗ para abrirla en otra pestaña. Se puede pegar sin
+   `https://` delante.
 
 En pantalla pequeña las tablas se convierten en tarjetas apiladas con el nombre de cada
 columna encima, para no tener que hacer scroll horizontal.

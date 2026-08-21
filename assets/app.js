@@ -403,7 +403,10 @@
 
   $('btn-reload-profiles').addEventListener('click', openProfiles);
   $('btn-switch-profile').addEventListener('click', function () {
-    if (queue.size && !confirm('Hay cambios sin guardar. ¿Salir de todas formas?')) return;
+    // Lo que queda en la cola lleva su propio profileId, asi que se guarda en
+    // el perfil correcto aunque ya estemos en otro. Solo avisamos.
+    if (queue.size && !confirm('Quedan cambios por enviar. Se guardaran en el perfil de ' +
+        state.profile.name + ' de todas formas. ¿Cambiar de perfil ahora?')) return;
     localStorage.removeItem(LS_PROFILE);
     state.profileId = null;
     openProfiles();
@@ -452,12 +455,19 @@
   function channelRow(key) {
     var found = state.channels.filter(function (c) { return c.channelKey === key; })[0];
     if (found) return found;
+    // El id se deriva del perfil y del canal, no es aleatorio: si el mismo
+    // perfil esta abierto en dos dispositivos, los dos escriben en la misma
+    // fila en vez de crear duplicados.
     var row = {
-      id: uid(), profileId: state.profileId, channelKey: key,
+      id: channelId(key), profileId: state.profileId, channelKey: key,
       name: '', url: '', hecho: '', notas: ''
     };
     state.channels.push(row);
     return row;
+  }
+
+  function channelId(key) {
+    return state.profileId + '::' + key;
   }
 
   function renderChannels() {
@@ -539,8 +549,9 @@
   });
 
   $('btn-add-channel').addEventListener('click', function () {
+    var key = uid();
     var row = {
-      id: uid(), profileId: state.profileId, channelKey: uid(),
+      id: channelId(key), profileId: state.profileId, channelKey: key,
       name: '', url: '', hecho: '', notas: ''
     };
     state.channels.push(row);
@@ -701,13 +712,36 @@
     return '<tr data-id="' + esc(a.id) + '">' +
       '<td data-label="Fecha"><input class="cell-input" type="date" data-field="fecha" value="' + esc(a.fecha) + '"></td>' +
       '<td data-label="Empresa"><input class="cell-input" data-field="empresa" value="' + esc(a.empresa) + '" placeholder="Empresa"></td>' +
-      '<td data-label="Puesto exacto"><input class="cell-input" data-field="puesto" value="' + esc(a.puesto) + '" placeholder="Título de la oferta"></td>' +
+      '<td data-label="Puesto exacto">' +
+        '<input class="cell-input" data-field="puesto" value="' + esc(a.puesto) + '" placeholder="Título de la oferta">' +
+        '<div class="cell-sub">' +
+          '<input class="cell-sub-input" data-field="enlace" value="' + esc(a.enlace) +
+            '" placeholder="Enlace a la oferta (opcional)" inputmode="url" spellcheck="false">' +
+          linkOutHtml(a.enlace) +
+        '</div>' +
+      '</td>' +
       '<td data-label="Fuente / canal"><select class="cell-select" data-field="fuente">' + fuentes.join('') + '</select></td>' +
       '<td data-label="Estado">' + selectHtml(ESTADOS, a.estado, 'estado', a.id) + '</td>' +
       '<td data-label="Próxima acción"><input class="cell-input" data-field="proximaAccion" value="' + esc(a.proximaAccion) +
         '" placeholder="Ej.: escribir en 10 días"></td>' +
       '<td class="cell-actions"><button class="row-del" type="button" data-del="1" aria-label="Quitar candidatura">×</button></td>' +
     '</tr>';
+  }
+
+  /** La flechita para abrir la oferta. Solo aparece si hay algo escrito. */
+  function linkOutHtml(value) {
+    if (!String(value || '').trim()) return '<span class="link-out" data-link-out hidden></span>';
+    return '<a class="link-out" data-link-out href="' + esc(normalizeUrl(value)) +
+           '" target="_blank" rel="noopener" title="Abrir la oferta">↗</a>';
+  }
+
+  /** Acepta que se pegue «empresa.fr/oferta» sin el https:// delante. */
+  function normalizeUrl(value) {
+    var v = String(value || '').trim();
+    if (!v) return '';
+    // Solo http(s): cualquier otra cosa se trata como dominio y se le pone
+    // https:// delante, para que no pueda colarse un javascript: en el href.
+    return /^https?:\/\//i.test(v) ? v : 'https://' + v;
   }
 
   function countLabel(rows) {
@@ -728,6 +762,7 @@
     if (!row) return;
     row[field] = e.target.value;
     if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
+    if (field === 'enlace') refreshLinkOut(e.target);
     enqueue('app:' + row.id, 'upsertApplication', row);
   });
 
@@ -766,7 +801,7 @@
     var row = {
       id: uid(), profileId: state.profileId, jobTypeId: jobTypeId,
       position: nextPosition(mine),
-      fecha: today(), empresa: '', puesto: '', fuente: '', estado: '', proximaAccion: ''
+      fecha: today(), empresa: '', puesto: '', fuente: '', estado: '', proximaAccion: '', enlace: ''
     };
     state.applications.push(row);
     enqueue('app:' + row.id, 'upsertApplication', row);
@@ -784,6 +819,15 @@
     if (!section) return;
     var title = section.querySelector('[data-jt-title]');
     if (title) title.textContent = jobTypeLabel(jobTypeRow, index);
+  }
+
+  function refreshLinkOut(input) {
+    var box = input.closest('.cell-sub');
+    if (!box) return;
+    var old = box.querySelector('[data-link-out]');
+    var fresh = document.createElement('div');
+    fresh.innerHTML = linkOutHtml(input.value);
+    if (old) box.replaceChild(fresh.firstChild, old);
   }
 
   function refreshCounts(section) {
