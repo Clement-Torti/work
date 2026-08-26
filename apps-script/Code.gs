@@ -19,7 +19,7 @@ var SCHEMA = {
   Applications: ['id', 'profileId', 'jobTypeId', 'position', 'fecha', 'empresa', 'puesto',
                  'fuente', 'estado', 'proximaAccion', 'enlace',
                  'nota', 'misiones', 'sueldo', 'modalidad', 'ventajas',
-                 'ubicacion', 'lat', 'lon'],
+                 'ubicacion', 'lat', 'lon', 'notaComentario', 'cartaMotivacion'],
   Channels:     ['id', 'profileId', 'channelKey', 'name', 'url', 'hecho', 'notas'],
 
   // Empresas del perfil. Las candidaturas se enlazan por NOMBRE, no por id:

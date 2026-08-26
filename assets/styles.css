@@ -315,6 +315,55 @@ textarea.cell-input { display: block; resize: vertical; min-height: 42px; }
 
 .count-hint { color: var(--faint); font-size: 13.5px; }
 
+/* ------------------------------- questions groupees par entreprise (sec. 4) */
+
+.qgroup {
+  margin-bottom: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: #fff;
+  overflow: hidden;
+}
+.qgroup[open] { border-color: var(--teal); }
+
+.qgroup-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  background: #FBFCFC;
+  list-style: none;
+}
+.qgroup-head::-webkit-details-marker { display: none; }
+.qgroup-head:hover { background: var(--teal-soft); }
+.qgroup[open] .qgroup-head { border-bottom: 1px solid var(--line); }
+
+/* El triangulo, dibujado a mano para que gire. */
+.qgroup-head::before {
+  content: '\25B8';
+  color: var(--teal);
+  font-size: 13px;
+  line-height: 1.4;
+  transition: transform .12s ease;
+}
+.qgroup[open] .qgroup-head::before { transform: rotate(90deg); }
+
+.qgroup-name { font-weight: 700; font-size: 15.5px; }
+.qgroup-poste { color: var(--muted); font-size: 13.5px; }
+.qgroup-meta { margin-left: auto; color: var(--faint); font-size: 13px; }
+.qgroup-meta strong { color: var(--amber); font-weight: 700; }
+.qgroup-fiche { font-size: 13px; }
+
+.qgroup .table-wrap { border: 0; border-radius: 0; }
+.qgroup table.grid thead th { border-radius: 0; }
+
+@media (max-width: 760px) {
+  .qgroup-meta { margin-left: 0; width: 100%; }
+  .qgroup .table-wrap { padding: 8px 8px 0; }
+}
+
 /* --------------------------------------------- canaux (une ligne chacun) */
 
 .channels { display: grid; gap: 4px; margin: 4px 0 12px; }
@@ -637,6 +686,9 @@ details.help code {
   .sheet { margin: 0; border: 0; box-shadow: none; max-width: none; }
   .btn, .row-del, .save-state, .table-foot, .topbar .btn { display: none !important; }
   .cell-input, .cell-select { border: 0 !important; }
+  /* Los grupos van cerrados por defecto: en papel se abren todos. */
+  .qgroup:not([open]) > .table-wrap { display: block; }
+  .qgroup-head::before { display: none; }
 }
 
 /* ------------------------------- enlace opcional de la oferta */
@@ -861,6 +913,8 @@ body.modal-open { overflow: hidden; }
   text-transform: none;
 }
 .modal-body textarea.input { resize: vertical; line-height: 1.45; }
+/* La lettre es larga: min-height gana al alto en linea que pone autoGrow. */
+.modal-body textarea.md-letter { min-height: 190px; line-height: 1.6; }
 .modal-body .cell-select {
   border: 1px solid var(--line-strong);
   border-radius: 8px;

@@ -14,8 +14,9 @@ guardados en **tu propia hoja de Google Sheets**.
 - La clave de la hoja **no está en el código**: la escribe cada persona en su navegador
   y se queda en el `localStorage` de ese dispositivo.
 - Enlaces directos a todos los sitios de búsqueda del documento.
-- Nota sobre 10 por candidatura, y una **ficha detallada** por candidatura con mapa,
-  misiones, sueldo, modalidad, ventajas, preguntas de entrevista y contactos.
+- Nota sobre 10 por candidatura (con un texto libre para explicar por qué esa nota), y
+  una **ficha detallada** por candidatura con mapa, misiones, sueldo, modalidad,
+  ventajas, lettre de motivation, preguntas de entrevista y contactos.
 
 ---
 
@@ -173,7 +174,7 @@ arrastrando el marcador; se guarda como `lat`/`lon` en la hoja.
 |---|---|
 | `Profiles` | `id`, `name`, `createdAt` |
 | `JobTypes` | `id`, `profileId`, `position`, `tipo`, `porQue`, `nivelFrances`, `prioridad` |
-| `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion`, `enlace`, `nota`, `misiones`, `sueldo`, `modalidad`, `ventajas`, `ubicacion`, `lat`, `lon` |
+| `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion`, `enlace`, `nota`, `misiones`, `sueldo`, `modalidad`, `ventajas`, `ubicacion`, `lat`, `lon`, `notaComentario`, `cartaMotivacion` |
 | `Channels` | `id`, `profileId`, `channelKey`, `name`, `url`, `hecho`, `notas` |
 | `Companies` | `id`, `profileId`, `position`, `name`, `description`, `ubicacion`, `lat`, `lon` |
 | `Questions` | `id`, `profileId`, `applicationId`, `position`, `question`, `answered`, `answer` |
@@ -214,7 +215,8 @@ candidaturas; borrar un perfil borra todo lo suyo.
 
    El botón **Fiche** abre la ficha detallada, con un contador de cuántos datos hay
    dentro. La ficha guarda: misiones, fourchette de salaire, modalidad (presencial /
-   híbrido / teletrabajo), ventajas, ubicación con mapa, las preguntas que te hicieron
+   híbrido / teletrabajo), el porqué de la nota, ventajas, la lettre de motivation
+   enviada, ubicación con mapa, las preguntas que te hicieron
    en la entrevista (y si supiste responder), lo que aprendiste, y los contactos en la
    empresa (nombre, puesto, correo, teléfono, con enlaces para escribir o llamar).
 

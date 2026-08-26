@@ -140,6 +140,9 @@
     return out;
   })();
 
+  /** Clave del grupo de la seccion 4 para preguntas sin candidatura. */
+  var ORPHAN_Q = '__sans-candidature__';
+
   // --------------------------------------------------------------- estado
   var state = {
     url: null,
@@ -156,6 +159,7 @@
   };
 
   var openAppId = null;   // candidatura abierta en la ficha
+  var openQGroups = {};   // seccion 4: id de candidatura -> grupo desplegado
   var map = null;         // Leaflet de la ficha, solo mientras esta abierta
   var marker = null;
 
@@ -1247,7 +1251,7 @@
       position: nextPosition(mine),
       fecha: today(), empresa: '', puesto: '', fuente: '', estado: '', proximaAccion: '',
       enlace: '', nota: '', misiones: '', sueldo: '', modalidad: '', ventajas: '',
-      ubicacion: '', lat: '', lon: ''
+      ubicacion: '', lat: '', lon: '', notaComentario: '', cartaMotivacion: ''
     };
     state.applications.push(row);
     enqueue('app:' + row.id, 'upsertApplication', row);
@@ -1310,48 +1314,76 @@
       return;
     }
 
-    // Ordenadas por candidatura, siguiendo el orden de las candidaturas.
-    var order = {};
-    state.applications.forEach(function (a, i) { order[a.id] = i; });
-    var rows = state.questions.slice().sort(function (x, y) {
-      var dx = (order[x.applicationId] === undefined ? 9999 : order[x.applicationId]);
-      var dy = (order[y.applicationId] === undefined ? 9999 : order[y.applicationId]);
-      return dx - dy || Number(x.position || 0) - Number(y.position || 0);
+    // Un grupo por candidatura (la empresa da el titulo), en el orden de las
+    // candidaturas. Las huerfanas -candidatura borrada- caen en el ultimo grupo.
+    var groups = [];
+    var byApp = {};
+    function groupFor(key, app) {
+      if (!byApp[key]) { byApp[key] = { key: key, app: app, rows: [] }; groups.push(byApp[key]); }
+      return byApp[key];
+    }
+    state.applications.forEach(function (a) { groupFor(a.id, a); });
+    state.questions.forEach(function (q) {
+      var app = byId(state.applications, q.applicationId);
+      groupFor(app ? app.id : ORPHAN_Q, app).rows.push(q);
     });
 
-    box.innerHTML = '<div class="table-wrap"><table class="grid">' +
-      '<thead><tr>' +
-        '<th style="width:30%">Question pos\u00e9e</th>' +
-        '<th style="width:16%">Entreprise</th>' +
-        '<th style="width:11%">Su r\u00e9pondre ?</th>' +
-        '<th style="width:39%">R\u00e9ponse \u00e0 donner la prochaine fois</th>' +
-        '<th style="width:44px"><span class="sr-only">Actions</span></th>' +
-      '</tr></thead><tbody>' +
-      rows.map(function (q) {
-        var app = byId(state.applications, q.applicationId);
-        return '<tr data-qid="' + esc(q.id) + '">' +
-          '<td data-label="Question pos\u00e9e"><textarea class="cell-input" data-qfield="question" rows="1" ' +
-            'placeholder="La question">' + esc(q.question) + '</textarea></td>' +
-          '<td data-label="Entreprise"><button class="link-btn" type="button" data-open-app="' +
-            esc(q.applicationId) + '">' + esc(appLabel(app)) + '</button></td>' +
-          '<td data-label="Su r\u00e9pondre ?">' + selectHtml(REPONDU, q.answered, 'answered', ' data-qsel="1"') + '</td>' +
-          '<td data-label="R\u00e9ponse \u00e0 donner"><textarea class="cell-input" data-qfield="answer" rows="1" ' +
-            'placeholder="Ce qu\u2019il faudrait r\u00e9pondre">' + esc(q.answer) + '</textarea></td>' +
-          '<td class="cell-actions"><button class="row-del" type="button" data-qdel="1" ' +
-            'aria-label="Retirer cette question">\u00d7</button></td>' +
-        '</tr>';
-      }).join('') +
-      '</tbody></table></div>' +
-      '<div class="table-foot"><span class="count-hint">' + state.questions.length +
-        (state.questions.length === 1 ? ' question' : ' questions') + ' au total</span></div>';
+    var html = groups.filter(function (g) { return g.rows.length; }).map(function (g) {
+      g.rows.sort(function (x, y) { return Number(x.position || 0) - Number(y.position || 0); });
+      var aRevoir = g.rows.filter(function (q) { return q.answered !== 'oui'; }).length;
+
+      return '<details class="qgroup" data-qgroup="' + esc(g.key) + '"' +
+          (openQGroups[g.key] ? ' open' : '') + '>' +
+        '<summary class="qgroup-head">' +
+          '<span class="qgroup-name" data-qgroup-name>' +
+            esc(g.app ? appLabel(g.app) : 'Candidature supprim\u00e9e') + '</span>' +
+          (g.app && g.app.puesto ? '<span class="qgroup-poste">' + esc(g.app.puesto) + '</span>' : '') +
+          '<span class="qgroup-meta">' + g.rows.length +
+            (g.rows.length === 1 ? ' question' : ' questions') +
+            (aRevoir ? ' \u00b7 <strong>' + aRevoir + ' \u00e0 revoir</strong>' : '') + '</span>' +
+          (g.app ? '<button class="link-btn qgroup-fiche" type="button" data-open-app="' +
+            esc(g.app.id) + '">Fiche</button>' : '') +
+        '</summary>' +
+        '<div class="table-wrap"><table class="grid">' +
+        '<thead><tr>' +
+          '<th style="width:34%">Question pos\u00e9e</th>' +
+          '<th style="width:13%">Su r\u00e9pondre ?</th>' +
+          '<th style="width:53%">R\u00e9ponse \u00e0 donner la prochaine fois</th>' +
+          '<th style="width:44px"><span class="sr-only">Actions</span></th>' +
+        '</tr></thead><tbody>' +
+        g.rows.map(function (q) {
+          return '<tr data-qid="' + esc(q.id) + '">' +
+            '<td data-label="Question pos\u00e9e"><textarea class="cell-input" data-qfield="question" rows="1" ' +
+              'placeholder="La question">' + esc(q.question) + '</textarea></td>' +
+            '<td data-label="Su r\u00e9pondre ?">' + selectHtml(REPONDU, q.answered, 'answered', ' data-qsel="1"') + '</td>' +
+            '<td data-label="R\u00e9ponse \u00e0 donner"><textarea class="cell-input" data-qfield="answer" rows="1" ' +
+              'placeholder="Ce qu\u2019il faudrait r\u00e9pondre">' + esc(q.answer) + '</textarea></td>' +
+            '<td class="cell-actions"><button class="row-del" type="button" data-qdel="1" ' +
+              'aria-label="Retirer cette question">\u00d7</button></td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table></div>' +
+      '</details>';
+    }).join('');
+
+    var abiertos = groups.some(function (g) { return g.rows.length && openQGroups[g.key]; });
+    box.innerHTML = html +
+      '<div class="table-foot">' +
+        '<button class="btn btn--sm" type="button" data-q-toggle-all="1">' +
+          (abiertos ? 'Tout replier' : 'Tout d\u00e9plier') + '</button>' +
+        '<span class="count-hint">' + state.questions.length +
+          (state.questions.length === 1 ? ' question' : ' questions') + ' au total, ' +
+          'group\u00e9es par entreprise</span>' +
+      '</div>';
 
     autoGrowAll(box);
   }
 
-  /** El nombre de la empresa sale en la seccion 4: se refresca en vivo. */
+  /** El nombre de la empresa titula su grupo en la seccion 4: en vivo, sin
+   *  volver a pintar (un render cerraria los grupos abiertos). */
   function refreshQuestionCompany(app) {
-    var cells = $('all-questions').querySelectorAll('[data-open-app="' + cssEsc(app.id) + '"]');
-    Array.prototype.forEach.call(cells, function (el) { el.textContent = appLabel(app); });
+    var head = $('all-questions').querySelector('[data-qgroup="' + cssEsc(app.id) + '"] [data-qgroup-name]');
+    if (head) head.textContent = appLabel(app);
   }
 
   $('all-questions').addEventListener('input', function (e) {
@@ -1373,9 +1405,36 @@
     enqueue('question:' + q.id, 'upsertQuestion', q);
   });
 
+  // 'toggle' no burbujea: hay que escucharlo en la fase de captura.
+  $('all-questions').addEventListener('toggle', function (e) {
+    var det = e.target.closest ? e.target.closest('details.qgroup') : null;
+    if (!det) return;
+    var key = det.getAttribute('data-qgroup');
+    if (det.open) openQGroups[key] = true; else delete openQGroups[key];
+    // Dentro de un grupo cerrado scrollHeight es 0: hay que medir al abrir.
+    if (det.open) autoGrowAll(det);
+    var btn = $('all-questions').querySelector('[data-q-toggle-all]');
+    if (btn) {
+      var some = !!$('all-questions').querySelector('details.qgroup[open]');
+      btn.textContent = some ? 'Tout replier' : 'Tout d\u00e9plier';
+    }
+  }, true);
+
   $('all-questions').addEventListener('click', function (e) {
     var open = e.target.closest('[data-open-app]');
-    if (open) return openDetail(open.getAttribute('data-open-app'));
+    if (open) {
+      // El boton vive dentro del <summary>: sin esto, abrir la ficha
+      // desplegaria tambien el grupo.
+      e.preventDefault();
+      return openDetail(open.getAttribute('data-open-app'));
+    }
+
+    if (e.target.getAttribute('data-q-toggle-all')) {
+      var groups = $('all-questions').querySelectorAll('details.qgroup');
+      var abrir = !$('all-questions').querySelector('details.qgroup[open]');
+      Array.prototype.forEach.call(groups, function (d) { d.open = abrir; });
+      return;
+    }
 
     if (!e.target.getAttribute('data-qdel')) return;
     var id = e.target.closest('tr').getAttribute('data-qid');
@@ -1414,11 +1473,21 @@
           fieldBlock('Lien de l\u2019offre', '<input class="input" data-af="enlace" value="' + esc(app.enlace) +
             '" placeholder="https://\u2026" spellcheck="false">') +
         '</div>' +
+        fieldBlock('Pourquoi cette note', '<textarea class="input" data-af="notaComentario" rows="2" ' +
+          'placeholder="Ex. : bien pay\u00e9, mais les missions ont l\u2019air stressantes">' +
+          esc(app.notaComentario) + '</textarea>') +
         fieldBlock('Missions', '<textarea class="input" data-af="misiones" rows="3" ' +
           'placeholder="Ce que le poste demande au quotidien">' + esc(app.misiones) + '</textarea>') +
         fieldBlock('Avantages', '<textarea class="input" data-af="ventajas" rows="2" ' +
           'placeholder="Ex. : tickets restaurant, 50 % transport, 2 jours de t\u00e9l\u00e9travail">' +
           esc(app.ventajas) + '</textarea>') +
+      '</section>' +
+
+      '<section class="md-block">' +
+        '<h3 class="md-h">Lettre de motivation</h3>' +
+        '<textarea class="input md-letter" data-af="cartaMotivacion" rows="10" ' +
+          'placeholder="La lettre envoy\u00e9e avec cette candidature\u2026">' +
+          esc(app.cartaMotivacion) + '</textarea>' +
       '</section>' +
 
       '<section class="md-block">' +
