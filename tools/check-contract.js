@@ -275,5 +275,379 @@ console.log('\n== en papel los grupos cerrados se abren ==');
 const rPrint = css.slice(css.indexOf('@media print'));
 check('la regla de impresion existe', /\.qgroup:not\(\[open\]\)/.test(rPrint), rPrint);
 
+// ---------------------- 7. la recherche assistee par IA
+// El circuito es: prompt -> el usuario lo pega en su IA -> vuelve un JSON ->
+// se convierte en filas de la hoja. Lo unico que no se puede probar aqui es
+// la IA; todo lo demas si, y conviene, porque un campo que no exista en el
+// esquema se perderia sin decir nada.
+console.log('\n== el prompt lleva todo lo que la IA necesita ==');
+
+// Las funciones puras salen del propio app.js, entre sus dos marcas.
+const IA_START = '  // --- IA: funciones puras';
+const IA_END = '  // --- fin de las funciones puras de la IA';
+const iaSrc = appJs.slice(appJs.indexOf(IA_START), appJs.indexOf(IA_END));
+check('el bloque de funciones puras existe y esta delimitado',
+  appJs.indexOf(IA_START) > 0 && appJs.indexOf(IA_END) > appJs.indexOf(IA_START));
+
+const IA = new Function('ST_A_VALIDER', iaSrc +
+  '\nreturn { buildAiPrompt: buildAiPrompt, parseAiOffers: parseAiOffers,' +
+  ' buildImportPayload: buildImportPayload, normModalite: normModalite,' +
+  ' normNote: normNote, normCoord: normCoord };')('À valider');
+
+const prefs = { links: 'https://linkedin.com/in/moi\nhttps://mon-site.fr', extra: 'je vise des PME',
+  ville: 'Colmar', rayon: '25', salaire: '29000', contrat: 'CDI',
+  teletravail: 'Hybride', jours: '15', max: '7' };
+const ctxPrompt = {
+  jobTypes: [
+    { id: 'jt1', tipo: 'Marketing digital', porQue: 'mon parcours', nivelFrances: 'Intermédiaire (B1-B2)', prioridad: 'Haute' },
+    { id: 'jt2', tipo: 'Service client bilingue', porQue: '', nivelFrances: '', prioridad: 'Basse' }
+  ],
+  applications: [
+    { empresa: 'Ubisoft', puesto: 'Chef de projet', enlace: 'https://offre.fr/1' },
+    { empresa: '', puesto: '', enlace: '' }
+  ]
+};
+const prompt = IA.buildAiPrompt(prefs, ctxPrompt);
+
+check('lleva los enlaces del perfil',
+  prompt.includes('https://linkedin.com/in/moi') && prompt.includes('https://mon-site.fr'));
+check('lleva el campo libre', prompt.includes('je vise des PME'));
+check('lleva los tipos de puesto con su contexto',
+  prompt.includes('Marketing digital') && prompt.includes('mon parcours') &&
+  prompt.includes('Service client bilingue'));
+check('lleva los criterios', prompt.includes('Colmar') && prompt.includes('25 km') &&
+  prompt.includes('29000') && prompt.includes('CDI') && prompt.includes('Hybride') &&
+  prompt.includes('15 jours'));
+check('lleva el maximo de ofertas pedido', /7 offres au maximum/.test(prompt));
+check('lleva lo que ya esta en el suivi, para no repetirlo',
+  prompt.includes('Ubisoft') && prompt.includes('Chef de projet') && prompt.includes('https://offre.fr/1'));
+check('no mete lineas vacias por las candidaturas sin nombre',
+  (prompt.match(/^- \? — poste non pr/gm) || []).length === 0);
+check('pide el JSON con todas las claves del formato',
+  ['"offres"', '"typeDePoste"', '"poste"', '"lien"', '"source"', '"datePublication"',
+   '"salaire"', '"modalite"', '"missions"', '"avantages"', '"note"', '"pourquoiCetteNote"',
+   '"entreprise"', '"questionsProbables"', '"aSavoir"', '"contacts"']
+  .every(k => prompt.includes(k)));
+check('prohibe inventar', /N’invente RIEN/.test(prompt));
+// El ejemplo que le damos es la forma que la IA va a copiar: si el ejemplo no
+// es JSON valido, su respuesta tampoco lo sera.
+let ejemplo = '';
+prompt.replace(/```(?:json)?\s*([\s\S]*?)```/gi, (_, inner) => {
+  if (inner.trim().length > ejemplo.length) ejemplo = inner.trim();
+  return '';
+});
+let ejemploOk = false, ejemploErr = '';
+try { ejemploOk = Array.isArray(JSON.parse(ejemplo).offres); }
+catch (e) { ejemploErr = e.message; }
+check('el ejemplo de JSON del prompt es JSON valido', ejemploOk, ejemploErr);
+check('el ejemplo del prompt entra por el propio lector de respuestas',
+  (IA.parseAiOffers(prompt.slice(prompt.indexOf('```json'))).offers || []).length === 1);
+check('el ejemplo cubre las cinco tablas de la hoja', ejemploOk &&
+  ['entreprise', 'questionsProbables', 'aSavoir', 'contacts', 'poste']
+    .every(k => k in JSON.parse(ejemplo).offres[0]));
+check('nombra varias plataformas francesas',
+  ['France Travail', 'LinkedIn', 'Indeed', 'HelloWork', 'Welcome to the Jungle', 'APEC']
+  .every(k => prompt.includes(k)));
+
+// sin criterios opcionales, el prompt no inventa lineas
+const promptMin = IA.buildAiPrompt(
+  { links: '', extra: '', ville: '', rayon: '', salaire: '', contrat: 'Peu importe',
+    teletravail: 'Peu importe', jours: '', max: '' }, ctxPrompt);
+check('sin enlaces, lo dice en vez de dejar un hueco',
+  /Je ne t’ai donné aucun lien/.test(promptMin));
+check('sin salario, no aparece la linea', !/Salaire minimum/.test(promptMin));
+check('"peu importe" no se manda a la IA',
+  !/Type de contrat/.test(promptMin) && !/Présence sur place/.test(promptMin));
+check('el maximo por defecto es 10', /10 offres au maximum/.test(promptMin));
+
+console.log('\n== la respuesta de la IA se lee en todas sus formas ==');
+const OFFER = '{"offres":[{"poste":"Dev","entreprise":{"nom":"Arte"}}]}';
+check('bloque ```json', (IA.parseAiOffers('Voici :\n```json\n' + OFFER + '\n```\nBonne chance !').offers || []).length === 1);
+check('bloque ``` sin la palabra json', (IA.parseAiOffers('```\n' + OFFER + '\n```').offers || []).length === 1);
+check('objeto a pelo', (IA.parseAiOffers(OFFER).offers || []).length === 1);
+check('con frases alrededor', (IA.parseAiOffers('J’ai trouve ceci : ' + OFFER + ' voila.').offers || []).length === 1);
+check('el array a pelo tambien vale', (IA.parseAiOffers('[{"poste":"Dev"}]').offers || []).length === 1);
+check('lista vacia no es un error', Array.isArray(IA.parseAiOffers('{"offres":[]}').offers));
+check('texto vacio: error claro', /Colle d’abord/.test(IA.parseAiOffers('   ').error || ''));
+check('JSON roto: error claro', /pas du JSON valide/.test(IA.parseAiOffers('{"offres": [').error || ''));
+check('JSON sin lista: error claro', /liste/.test(IA.parseAiOffers('{"resultat":"rien"}').error || ''));
+
+console.log('\n== las ofertas se convierten en filas de la hoja ==');
+const ctxImp = {
+  profileId: 'P1',
+  jobTypes: ctxPrompt.jobTypes,
+  applications: [
+    { id: 'a0', jobTypeId: 'jt1', position: 30, empresa: 'Ubisoft', puesto: 'Chef de projet', enlace: 'https://offre.fr/1' }
+  ],
+  companies: [{ id: 'c0', position: 10, name: 'Ubisoft' }],
+  today: '2026-08-26',
+  uid: (() => { let n = 0; return () => 'new-' + (++n); })()
+};
+
+const offers = [
+  { typeDePoste: 'Marketing digital', poste: 'Chargé de com', lien: 'https://offre.fr/2',
+    source: 'Indeed', datePublication: '2026-08-20', salaire: '30-34 k€',
+    modalite: 'full remote', missions: 'Community management', avantages: 'Tickets resto',
+    adresse: '2 rue X, Colmar', lat: '48,08', lon: '7.35', note: '8/10',
+    pourquoiCetteNote: 'Bien payé mais missions floues',
+    entreprise: { nom: 'Arte', description: 'Chaîne culturelle', adresse: '4 quai du Chanoine Winterer, Strasbourg', lat: '48.5901', lon: '7.7620' },
+    questionsProbables: ['Pourquoi Arte ?', '  ', 'Ton niveau de français ?'],
+    aSavoir: ['Process en 3 entretiens'],
+    contacts: [{ nom: 'Marie', role: 'RH', email: 'marie@arte.tv', telephone: '' }, { nom: '', role: '' }] },
+  // el tipo de puesto no existe: cae en el primero, con aviso
+  { typeDePoste: 'Data science', poste: 'Analyste', lien: 'https://offre.fr/3',
+    entreprise: { nom: 'CTS' }, modalite: 'sur place', note: '42' },
+  // duplicado por enlace
+  { poste: 'Autre chose', lien: 'https://offre.fr/1', entreprise: { nom: 'Ailleurs' } },
+  // duplicado por empresa + puesto
+  { poste: 'Chef de projet', entreprise: { nom: 'ubisoft  ' } },
+  // vacia
+  { entreprise: {} },
+  // empresa que ya existe: no se duplica la ficha de empresa
+  { typeDePoste: 'Service client bilingue', poste: 'Conseiller', lien: 'https://offre.fr/4',
+    entreprise: { nom: 'Ubisoft', description: 'no deberia pisar la existente' } }
+];
+
+const built = IA.buildImportPayload(offers, ctxImp);
+check('devuelve un payload', !built.error, built.error);
+const P = built.payload, R = built.report;
+
+check('3 candidaturas nuevas, 3 descartadas', P.applications.length === 3 && R.skipped.length === 3,
+  { apps: P.applications.length, skipped: R.skipped });
+check('los motivos del descarte se explican',
+  R.skipped.every(s => s.why) && R.skipped.some(s => /lien/.test(s.why)) &&
+  R.skipped.some(s => /déjà dans ton suivi/.test(s.why)) &&
+  R.skipped.some(s => /ni entreprise ni poste/.test(s.why)), R.skipped);
+
+const arte = P.applications[0];
+check('todas llegan como « À valider »',
+  P.applications.every(a => a.estado === 'À valider'), P.applications.map(a => a.estado));
+check('la fecha es la del dia', P.applications.every(a => a.fecha === '2026-08-26'));
+check('el perfil se propaga a todo',
+  [].concat(P.companies, P.applications, P.questions, P.learnings, P.contacts)
+    .every(r => r.profileId === 'P1'));
+check('el tipo de puesto se resuelve por su nombre', arte.jobTypeId === 'jt1');
+check('un tipo desconocido cae en el primero y se avisa',
+  P.applications[1].jobTypeId === 'jt1' && R.warnings.some(w => /Data science/.test(w)), R.warnings);
+check('la posicion continua tras las filas que ya existen', arte.position === 40, arte.position);
+check('"full remote" se traduce a la lista cerrada', arte.modalidad === 'Télétravail', arte.modalidad);
+check('"sur place" tambien', P.applications[1].modalidad === 'Présentiel');
+check('la nota "8/10" queda en "8"', arte.nota === '8', arte.nota);
+check('una nota imposible se tira', P.applications[1].nota === '', P.applications[1].nota);
+check('la coma decimal se arregla', arte.lat === '48.08', arte.lat);
+check('el porque de la nota se guarda', /Bien pay/.test(arte.notaComentario));
+
+check('una entreprise nueva por oferta nueva, sin repetir la que ya existia',
+  P.companies.length === 2 && P.companies.map(c => c.name).join(',') === 'Arte,CTS',
+  P.companies.map(c => c.name));
+check('no se pisa la ficha de una empresa que ya existe',
+  !P.companies.some(c => /no deberia pisar/.test(c.description || '')));
+check('la empresa nueva guarda su direccion y su punto',
+  P.companies[0].ubicacion.indexOf('Winterer') > 0 && P.companies[0].lat === '48.5901');
+
+check('las preguntas cuelgan de su candidatura y se limpian los huecos',
+  P.questions.length === 2 && P.questions.every(q => q.applicationId === arte.id), P.questions);
+check('la fuente y la fecha de publicacion se apuntan como info',
+  P.learnings.some(l => /Indeed/.test(l.note) && /2026-08-20/.test(l.note)), P.learnings);
+check('lo que la IA sabe entra tambien', P.learnings.some(l => /3 entretiens/.test(l.note)));
+check('un contacto vacio no crea fila',
+  P.contacts.length === 1 && P.contacts[0].email === 'marie@arte.tv', P.contacts);
+
+check('sin tipos de puesto, se explica en vez de fallar',
+  /Ajoute d’abord un type de poste/.test(
+    (IA.buildImportPayload(offers, Object.assign({}, ctxImp, { jobTypes: [] })).error) || ''));
+
+// -------- las filas tienen que encajar EXACTAMENTE con el esquema de la hoja
+console.log('\n== las filas importadas encajan con el esquema de la hoja ==');
+function schemaCols(table) {
+  const block = codeGs.slice(codeGs.indexOf('var SCHEMA'), codeGs.indexOf('var CHILDREN'));
+  const line = block.slice(block.indexOf('\n  ' + table + ':'));
+  return [...line.slice(0, line.indexOf('],')).matchAll(/'(\w+)'/g)].map(m => m[1]);
+}
+[['companies', 'Applications' && 'Companies'], ['applications', 'Applications'],
+ ['questions', 'Questions'], ['learnings', 'Learnings'], ['contacts', 'Contacts']]
+.forEach(([key, table]) => {
+  const cols = schemaCols(table);
+  const rows = P[key];
+  const sobran = uniq([].concat(...rows.map(r => Object.keys(r).filter(k => !cols.includes(k)))));
+  const faltan = uniq([].concat(...rows.map(r => cols.filter(c => !(c in r)))));
+  check(key + ': ningun campo que la hoja no tenga', sobran.length === 0, sobran);
+  check(key + ': ningun campo del esquema olvidado', faltan.length === 0, faltan);
+});
+
+// ------- el circuito completo: JSON de la IA -> filas -> hoja -> loadProfile
+// Aqui no hay payload escrito a mano: el que viaja es el que construye la
+// pagina. Es la unica prueba que cubre la costura entre las dos mitades.
+console.log('\n== de la respuesta de la IA a la hoja, sin escalas ==');
+
+const C = call('createProfile', { name: 'Nora' }).data.profile;
+call('upsertJobType', { id: 'jtC', profileId: C.id, position: 10, tipo: 'Marketing digital' });
+
+const respuestaIA = 'Voici ce que j’ai trouvé :\n\n```json\n' + JSON.stringify({
+  offres: [{
+    typeDePoste: 'Marketing digital', poste: 'Chargé de com', lien: 'https://offre.fr/9',
+    source: 'Indeed', datePublication: '2026-08-20', salaire: '30-34 k€',
+    modalite: 'hybride', missions: 'Community management', avantages: 'Tickets resto',
+    adresse: '2 rue X, Strasbourg', lat: '48.58', lon: '7.75',
+    note: '8', pourquoiCetteNote: 'Bien payé mais missions floues',
+    entreprise: { nom: 'Arte', description: 'Chaîne culturelle', adresse: '4 quai Winterer', lat: '48.59', lon: '7.76' },
+    questionsProbables: ['Pourquoi Arte ?'],
+    aSavoir: ['Process en 3 entretiens'],
+    contacts: [{ nom: 'Marie', role: 'RH', email: 'marie@arte.tv', telephone: '' }]
+  }]
+}, null, 2) + '\n```\n\nBonne chance !';
+
+const leido = IA.parseAiOffers(respuestaIA);
+check('la respuesta de la IA se lee', (leido.offers || []).length === 1, leido.error);
+
+const real = IA.buildImportPayload(leido.offers, {
+  profileId: C.id, jobTypes: [{ id: 'jtC', tipo: 'Marketing digital' }],
+  applications: [], companies: [], today: '2026-08-26',
+  uid: (() => { let n = 0; return () => 'e2e-' + (++n); })()
+});
+check('se convierte en filas', !real.error && real.report.kept.length === 1, real.error);
+
+const payloadReal = Object.assign({ profileId: C.id }, real.payload);
+let ri = call('importOffers', payloadReal);
+check('la hoja lo acepta y cuenta las filas',
+  ri.ok === true && ri.data.rows === 6, ri);   // 1 empresa + 1 cand. + 1 pregunta + 2 infos + 1 contacto
+
+const dd = call('loadProfile', { profileId: C.id }).data;
+check('la candidatura llega con su estado « À valider »',
+  dd.applications.length === 1 && dd.applications[0].estado === 'À valider', dd.applications);
+check('nada se pierde por el camino', dd.applications[0].puesto === 'Chargé de com' &&
+  dd.applications[0].enlace === 'https://offre.fr/9' &&
+  dd.applications[0].modalidad === 'Hybride' &&
+  dd.applications[0].nota === '8' &&
+  /Bien pay/.test(dd.applications[0].notaComentario) &&
+  dd.applications[0].sueldo === '30-34 k€', dd.applications[0]);
+check('la empresa entra con su direccion',
+  dd.companies.length === 1 && dd.companies[0].name === 'Arte' &&
+  dd.companies[0].lat === '48.59', dd.companies);
+check('el detalle cuelga de la candidatura',
+  dd.questions.length === 1 && dd.learnings.length === 2 && dd.contacts.length === 1 &&
+  dd.questions[0].applicationId === dd.applications[0].id &&
+  dd.contacts[0].email === 'marie@arte.tv',
+  { q: dd.questions, l: dd.learnings, c: dd.contacts });
+check('la fuente y la fecha quedan apuntadas como info',
+  /Indeed/.test(dd.learnings[0].note) && /2026-08-20/.test(dd.learnings[0].note), dd.learnings[0]);
+
+check('reimportar el mismo payload no duplica (upsert por id)',
+  (call('importOffers', payloadReal),
+   call('loadProfile', { profileId: C.id }).data.applications.length === 1));
+check('un payload vacio se rechaza', call('importOffers', { profileId: C.id }).ok === false);
+const enorme = { profileId: C.id, applications: [] };
+for (let i = 0; i < 601; i++) enorme.applications.push({ id: 'x' + i, profileId: C.id });
+check('un payload enorme se rechaza en vez de colgar la hoja',
+  call('importOffers', enorme).ok === false);
+
+// La segunda vuelta ya no debe proponer lo mismo: el prompt lo lleva excluido.
+const prompt2 = IA.buildAiPrompt(prefs, { jobTypes: ctxPrompt.jobTypes, applications: dd.applications });
+check('la siguiente busqueda excluye lo que se acaba de importar',
+  prompt2.includes('Chargé de com') && prompt2.includes('https://offre.fr/9'));
+const otraVez = IA.buildImportPayload(leido.offers, {
+  profileId: C.id, jobTypes: [{ id: 'jtC', tipo: 'Marketing digital' }],
+  applications: dd.applications, companies: dd.companies, today: '2026-08-26', uid: () => 'z'
+});
+check('y si la IA insiste, el import la descarta sola',
+  otraVez.report.kept.length === 0 && /déjà/.test(otraVez.report.skipped[0].why),
+  otraVez.report.skipped);
+
+console.log('\n== las offres masquees salen de la tabla sin borrarse ==');
+check('el filtro existe y cubre refusees y ecartees',
+  /var STATUTS_CACHES = \['Refus\\u00e9e', ST_ECARTEE\]/.test(appJs), 'STATUTS_CACHES');
+check('los dos estados nuevos estan en la lista del select',
+  /value: ST_A_VALIDER/.test(appJs) && /value: ST_ECARTEE/.test(appJs));
+check('ninguno de los dos cuenta como "ya enviada"',
+  !/STATUTS_ENVOYES = \[[^\]]*valider/.test(appJs) &&
+  !/STATUTS_ENVOYES = \[[^\]]*ECARTEE/.test(appJs));
+check('la tabla pinta solo lo visible', /rows = visibleApps\(all\)/.test(appJs));
+check('la ficha ofrece guardar o descartar',
+  /data-app-keep/.test(appJs) && /data-app-drop/.test(appJs));
+check('descartar no borra la fila: solo cambia el estado',
+  /app\.estado = e\.target\.getAttribute\('data-app-drop'\) \? ST_ECARTEE : ''/.test(appJs));
+check('hay un boton para revelarlas', /data-toggle-hidden/.test(appJs));
+
+// ------------- 8. la fiche: la lettre et les reponses se replient
+// Un pliegue cerrado tiene scrollHeight 0: si no se mide al abrirlo, un texto
+// largo aparece en una sola linea. Y el resumen de la cabecera es lo unico
+// que se ve cerrado, asi que tiene que decir algo util.
+console.log('\n== la lettre et les réponses partent repliées ==');
+
+function renderQuestionsFiche(questions, openFolds) {
+  const i = appJs.indexOf('  function renderMdQuestions()');
+  const body = appJs.slice(i, appJs.indexOf("\n  }\n", appJs.indexOf('autoGrowAll(', i)) + 4);
+  const helpers = appJs.slice(appJs.indexOf('  function foldHtml('),
+                              appJs.indexOf('\n  }\n', appJs.indexOf('  function peek(')) + 4);
+  const box = { innerHTML: '' };
+  const env = {
+    openFolds, openAppId: 'A1',
+    state: { questions: questions },
+    REPONDU: [],
+    $: () => box,
+    esc: (x) => String(x == null ? '' : x).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+    forApp: (rows, id) => rows.filter(r => r.applicationId === id),
+    selectHtml: () => '<select></select>',
+    autoGrowAll: () => {}
+  };
+  const keys = Object.keys(env);
+  new Function(...keys, helpers + body + '\nrenderMdQuestions();')(...keys.map(k => env[k]));
+  return box.innerHTML;
+}
+
+const qs = [
+  { id: 'q1', applicationId: 'A1', question: 'Pourquoi nous ?', answered: '',
+    answer: 'Parce que le produit me parle et que j’ai déjà fait ce métier ailleurs, longuement.' },
+  { id: 'q2', applicationId: 'A1', question: 'Tes prétentions ?', answered: 'non', answer: '' }
+];
+let fh = renderQuestionsFiche(qs, {});
+
+check('cada respuesta vive en su propio pliegue',
+  (fh.match(/data-fold="answer:q1"/g) || []).length === 1 &&
+  (fh.match(/data-fold="answer:q2"/g) || []).length === 1);
+check('los pliegues empiezan cerrados', !/data-fold="answer:[^"]+"\s+open/.test(fh), fh.slice(0, 400));
+check('la respuesta esta dentro del pliegue, no fuera',
+  fh.indexOf('data-mq="answer"') > fh.indexOf('data-fold="answer:q1"') &&
+  fh.indexOf('data-mq="answer"') < fh.indexOf('</details>'));
+check('la pregunta sigue a la vista, fuera del pliegue',
+  fh.indexOf('data-mq="question"') < fh.indexOf('data-fold="answer:q1"'));
+check('cerrado se ve un trozo de la respuesta',
+  /Parce que le produit me parle/.test(fh) && /…<\/span>/.test(fh), fh.match(/md-fold-meta">[^<]*/g));
+check('el resumen no es mas largo que el limite',
+  (fh.match(/md-fold-meta">([^<]*)</g) || []).every(m => m.length - 16 <= 46),
+  fh.match(/md-fold-meta">[^<]*/g));
+check('una respuesta vacia lo dice', /md-fold-meta">à écrire</.test(fh));
+check('el select de « su répondre ? » no se pliega',
+  fh.indexOf('<select></select>') > fh.indexOf('</details>'));
+
+fh = renderQuestionsFiche(qs, { 'answer:q2': true });
+check('lo que estaba abierto se vuelve a pintar abierto',
+  /data-fold="answer:q2" open/.test(fh) && !/data-fold="answer:q1" open/.test(fh));
+
+console.log('\n== la lettre de motivation ==');
+check('la lettre esta dentro de un pliegue', /foldHtml\('lettre', 'Lettre de motivation'/.test(appJs));
+check('el textarea de la lettre sigue siendo el mismo campo',
+  /foldHtml\('lettre'[\s\S]{0,300}data-af="cartaMotivacion"/.test(appJs));
+check('cerrada, dice cuanto hay escrito',
+  /caract\\u00e8res/.test(appJs.slice(appJs.indexOf("foldHtml('lettre'"),
+                                     appJs.indexOf("foldHtml('lettre'") + 400)));
+check('el resumen se actualiza al teclear', /foldMeta\(t, t\.value \? String\(t\.value\)\.length/.test(appJs));
+check('abrir un pliegue mide los textarea que lleva dentro',
+  /details\.md-fold[\s\S]{0,300}autoGrowAll\(det\)/.test(appJs));
+check('el pliegue recuerda su estado en openFolds',
+  /openFolds\[key\] = true/.test(appJs) && /delete openFolds\[key\]/.test(appJs));
+
+const rPrintFold = css.slice(css.indexOf('@media print'));
+check('en papel los pliegues cerrados se abren',
+  /\.md-fold:not\(\[open\]\) > \.md-fold-body/.test(rPrintFold), rPrintFold);
+
+const rFoldHead = (() => {
+  const i = css.indexOf('\n.md-fold-head {');
+  return i < 0 ? '' : css.slice(i, css.indexOf('}', i));
+})();
+check('la cabecera del pliegue esconde el marcador del navegador',
+  /list-style:\s*none/.test(rFoldHead), rFoldHead);
+
 console.log('\n' + (fail ? fail + ' PRUEBA(S) FALLIDA(S)' : 'Contrato: ninguna prueba falla.'));
 process.exit(fail ? 1 : 0);

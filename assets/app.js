@@ -102,16 +102,28 @@
     { value: 'Basse', label: 'Basse', tone: 'low' }
   ];
 
+  /** Estados especiales de la busqueda con IA. */
+  var ST_A_VALIDER = '\u00c0 valider';
+  var ST_ECARTEE   = '\u00c9cart\u00e9e';
+
   var STATUTS = [
     { value: '', label: '\u00c0 envoyer', tone: 'todo' },
+    { value: ST_A_VALIDER, label: '\u00c0 valider (IA)', tone: 'ai' },
     { value: 'Envoy\u00e9e', label: 'Envoy\u00e9e', tone: 'sent' },
     { value: 'Relance faite', label: 'Relance faite', tone: 'sent' },
     { value: 'R\u00e9ponse re\u00e7ue', label: 'R\u00e9ponse re\u00e7ue', tone: 'progress' },
     { value: 'Entretien', label: 'Entretien', tone: 'progress' },
     { value: 'Accept\u00e9e', label: 'Accept\u00e9e', tone: 'good' },
     { value: 'Sans r\u00e9ponse', label: 'Sans r\u00e9ponse', tone: 'low' },
-    { value: 'Refus\u00e9e', label: 'Refus\u00e9e', tone: 'bad' }
+    { value: 'Refus\u00e9e', label: 'Refus\u00e9e', tone: 'bad' },
+    { value: ST_ECARTEE, label: '\u00c9cart\u00e9e', tone: 'low' }
   ];
+
+  /**
+   * Estos dos salen de la tabla sin borrarse: la fila sigue en la hoja y el
+   * boton de filtro la vuelve a mostrar. Una oferta descartada no se pierde.
+   */
+  var STATUTS_CACHES = ['Refus\u00e9e', ST_ECARTEE];
 
   /** Estados que cuentan como "ya enviada". */
   var STATUTS_ENVOYES = ['Envoy\u00e9e', 'Relance faite', 'R\u00e9ponse re\u00e7ue', 'Entretien',
@@ -160,6 +172,8 @@
 
   var openAppId = null;   // candidatura abierta en la ficha
   var openQGroups = {};   // seccion 4: id de candidatura -> grupo desplegado
+  var showHidden = false; // seccion 4: mostrar tambien las refusees/ecartees
+  var openFolds = {};     // ficha: pliegues abiertos (lettre, respuestas)
   var map = null;         // Leaflet de la ficha, solo mientras esta abierta
   var marker = null;
 
@@ -1089,8 +1103,48 @@
            forApp(state.contacts, appId).length;
   }
 
+  /** Refusee o ecartee: fuera de la tabla mientras el filtro este apagado. */
+  function isHidden(app) {
+    return STATUTS_CACHES.indexOf(app.estado) >= 0;
+  }
+
+  function visibleApps(rows) {
+    return showHidden ? rows : rows.filter(function (a) { return !isHidden(a); });
+  }
+
+  /** La barra de la seccion 4: buscar con IA y revelar lo que esta oculto. */
+  function renderTrackingBar() {
+    var hidden = state.applications.filter(isHidden).length;
+    var pending = state.applications.filter(function (a) {
+      return a.estado === ST_A_VALIDER;
+    }).length;
+
+    $('tracking-bar').innerHTML =
+      '<button class="btn btn--primary btn--sm" type="button" data-ai-open="1">' +
+        '\u2728 Chercher avec l\u2019IA</button>' +
+      (pending ? '<span class="pill pill--ai">' + pending + ' \u00e0 valider</span>' : '') +
+      '<span class="topbar-spacer"></span>' +
+      (hidden
+        ? '<button class="btn btn--ghost btn--sm" type="button" data-toggle-hidden="1" ' +
+            'title="Les candidatures refus\u00e9es et les offres \u00e9cart\u00e9es restent dans ta feuille, ' +
+            'elles sont juste masqu\u00e9es ici.">' +
+            (showHidden ? 'Masquer' : 'Afficher') + ' les ' + hidden + ' offre' +
+            (hidden === 1 ? '' : 's') + ' masqu\u00e9e' + (hidden === 1 ? '' : 's') +
+          '</button>'
+        : '');
+  }
+
+  $('tracking-bar').addEventListener('click', function (e) {
+    if (e.target.getAttribute('data-ai-open')) return openAiModal();
+    if (e.target.getAttribute('data-toggle-hidden')) {
+      showHidden = !showHidden;
+      renderTracking();
+    }
+  });
+
   function renderTracking() {
     var box = $('tracking');
+    renderTrackingBar();
 
     if (!state.jobTypes.length) {
       box.innerHTML = '<p class="empty">Ajoute un type de poste plus haut et son tableau de suivi ' +
@@ -1100,10 +1154,14 @@
     }
 
     box.innerHTML = state.jobTypes.map(function (jt, i) {
-      var rows = state.applications.filter(function (a) { return a.jobTypeId === jt.id; });
+      var all = state.applications.filter(function (a) { return a.jobTypeId === jt.id; });
+      var rows = visibleApps(all);
+      var oculto = all.length - rows.length;
       return '<section data-jt="' + esc(jt.id) + '">' +
         '<h3 class="subsection"><span data-jt-title>' + esc(jobTypeLabel(jt, i)) + '</span>' +
-          '<span class="count-hint" data-jt-count>' + countLabel(rows) + '</span></h3>' +
+          '<span class="count-hint" data-jt-count>' + countLabel(rows) +
+            (oculto ? (rows.length ? ' \u00b7 ' : '') + oculto + ' masqu\u00e9e' +
+              (oculto === 1 ? '' : 's') : '') + '</span></h3>' +
         '<div class="table-wrap"><table class="grid">' +
           '<thead><tr>' +
             '<th style="width:11%">Date</th>' +
@@ -1117,7 +1175,9 @@
           '</tr></thead>' +
           '<tbody>' + (rows.length ? rows.map(applicationHtml).join('')
             : '<tr><td colspan="8" data-label=""><p class="empty" style="margin:10px">' +
-              'Aucune candidature pour l\u2019instant.</p></td></tr>') +
+              (oculto ? 'Rien \u00e0 afficher : ' + oculto + ' offre' + (oculto === 1 ? '' : 's') +
+                ' masqu\u00e9e' + (oculto === 1 ? '' : 's') + ' au-dessus.'
+                      : 'Aucune candidature pour l\u2019instant.') + '</p></td></tr>') +
           '</tbody>' +
         '</table></div>' +
         '<div class="table-foot"><button class="btn btn--sm" type="button" data-add-app="' + esc(jt.id) + '">' +
@@ -1143,7 +1203,10 @@
 
     var n = detailCount(a.id);
 
-    return '<tr data-id="' + esc(a.id) + '">' +
+    var mark = a.estado === ST_A_VALIDER ? ' class="is-avalider"'
+             : (isHidden(a) ? ' class="is-masquee"' : '');
+
+    return '<tr data-id="' + esc(a.id) + '"' + mark + '>' +
       '<td data-label="Date"><input class="cell-input" type="date" data-field="fecha" value="' + esc(a.fecha) + '"></td>' +
       '<td data-label="Entreprise"><input class="cell-input" data-field="empresa" ' +
         'list="companies-list" autocomplete="off" value="' + esc(a.empresa) +
@@ -1214,9 +1277,15 @@
     if (!row) return;
     row[field] = e.target.value;
     if (field === 'estado') {
+      enqueue('app:' + row.id, 'upsertApplication', row);
+      // Si el estado nuevo esta oculto, la fila desaparece de la tabla ahora
+      // mismo: dejarla a la vista hasta el siguiente repintado confunde.
+      if (isHidden(row) && !showHidden) { renderTracking(); return; }
       e.target.setAttribute('data-tone', toneOf(STATUTS, e.target.value));
+      tr.className = row.estado === ST_A_VALIDER ? 'is-avalider' : (isHidden(row) ? 'is-masquee' : '');
       refreshCounts(tr.closest('section[data-jt]'));
       renderStats();
+      return;
     }
     if (field === 'nota') e.target.setAttribute('data-tone', toneOf(NOTES, e.target.value));
     enqueue('app:' + row.id, 'upsertApplication', row);
@@ -1275,16 +1344,25 @@
     if (!section) return;
     var id = section.getAttribute('data-jt');
     var el = section.querySelector('[data-jt-count]');
-    if (el) el.textContent = countLabel(state.applications.filter(function (a) { return a.jobTypeId === id; }));
+    if (!el) return;
+    var all = state.applications.filter(function (a) { return a.jobTypeId === id; });
+    var rows = visibleApps(all);
+    var oculto = all.length - rows.length;
+    el.textContent = countLabel(rows) +
+      (oculto ? (rows.length ? ' \u00b7 ' : '') + oculto + ' masqu\u00e9e' + (oculto === 1 ? '' : 's') : '');
   }
 
   function renderStats() {
-    var all = state.applications;
+    // Las refusees/ecartees no cuentan en las cifras: si no, "candidatures"
+    // sube cada vez que se descarta una oferta de la IA.
+    var todas = state.applications;
+    var all = todas.filter(function (a) { return !isHidden(a); });
     var envoyees = all.filter(function (a) { return STATUTS_ENVOYES.indexOf(a.estado) >= 0; }).length;
     var entretiens = all.filter(function (a) {
       return a.estado === 'Entretien' || a.estado === 'Accept\u00e9e';
     }).length;
     var aEnvoyer = all.filter(function (a) { return !a.estado; }).length;
+    var aValider = all.filter(function (a) { return a.estado === ST_A_VALIDER; }).length;
 
     var cards = [
       { value: all.length, label: all.length === 1 ? 'candidature' : 'candidatures' },
@@ -1292,8 +1370,9 @@
       { value: entretiens, label: entretiens === 1 ? 'entretien' : 'entretiens' },
       { value: aEnvoyer, label: '\u00e0 envoyer' }
     ];
+    if (aValider) cards.push({ value: aValider, label: '\u00e0 valider' });
 
-    $('stats').innerHTML = all.length ? cards.map(function (c) {
+    $('stats').innerHTML = todas.length ? cards.map(function (c) {
       return '<div class="stat"><div class="stat-value">' + c.value + '</div>' +
              '<div class="stat-label">' + esc(c.label) + '</div></div>';
     }).join('') : '';
@@ -1453,6 +1532,66 @@
     return '<div class="field"><label>' + esc(label) + '</label>' + control + '</div>';
   }
 
+  /**
+   * Un bloque plegable de la ficha. Se acuerda de si estaba abierto mientras
+   * dure la sesion: la ficha se vuelve a pintar cada vez que se abre, y el
+   * que esta escribiendo su lettre no quiere replegarla a cada vuelta.
+   */
+  function foldHtml(key, title, meta, body, cls) {
+    return '<details class="md-fold' + (cls ? ' ' + cls : '') + '" data-fold="' + esc(key) + '"' +
+        (openFolds[key] ? ' open' : '') + '>' +
+      '<summary class="md-fold-head">' +
+        '<span class="md-fold-title">' + esc(title) + '</span>' +
+        '<span class="md-fold-meta">' + esc(meta) + '</span>' +
+      '</summary>' +
+      '<div class="md-fold-body">' + body + '</div>' +
+    '</details>';
+  }
+
+  /** Refresca el resumen del pliegue que contiene este campo, al teclear. */
+  function foldMeta(el, text) {
+    var det = el.closest('details.md-fold');
+    var meta = det && det.querySelector('.md-fold-meta');
+    if (meta) meta.textContent = text;
+  }
+
+  /** Primeras palabras de un texto, para ver lo que hay sin desplegar. */
+  function peek(value, max) {
+    var v = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+    if (!v) return '';
+    return v.length > max ? v.slice(0, max - 1) + '\u2026' : v;
+  }
+
+  /**
+   * Cabecera de decision para las ofertas que ha traido la IA. Guardar la deja
+   * como una candidatura normal; descartarla la saca de la tabla sin borrarla.
+   */
+  function verdictHtml(app) {
+    if (app.estado === ST_A_VALIDER) {
+      return '<div class="md-verdict">' +
+        '<p class="md-verdict-text"><strong>Offre propos\u00e9e par l\u2019IA.</strong> ' +
+          'V\u00e9rifie le lien et les infos \u2014 une IA se trompe. Puis d\u00e9cide :</p>' +
+        '<div class="row-actions">' +
+          '<button class="btn btn--primary btn--sm" type="button" data-app-keep="1">' +
+            'Garder cette candidature</button>' +
+          '<button class="btn btn--sm btn--danger" type="button" data-app-drop="1">' +
+            'L\u2019\u00e9carter</button>' +
+        '</div>' +
+      '</div>';
+    }
+    if (app.estado === ST_ECARTEE) {
+      return '<div class="md-verdict md-verdict--off">' +
+        '<p class="md-verdict-text"><strong>Offre \u00e9cart\u00e9e.</strong> ' +
+          'Elle reste dans ta feuille, mais hors du tableau.</p>' +
+        '<div class="row-actions">' +
+          '<button class="btn btn--sm" type="button" data-app-keep="1">' +
+            'La remettre dans le tableau</button>' +
+        '</div>' +
+      '</div>';
+    }
+    return '';
+  }
+
   function openDetail(appId) {
     var app = byId(state.applications, appId);
     if (!app) return;
@@ -1463,6 +1602,7 @@
       'Fiche de candidature';
 
     $('modal-body').innerHTML =
+      verdictHtml(app) +
       '<section class="md-block">' +
         '<h3 class="md-h">Le poste</h3>' +
         '<div class="md-grid">' +
@@ -1484,10 +1624,13 @@
       '</section>' +
 
       '<section class="md-block">' +
-        '<h3 class="md-h">Lettre de motivation</h3>' +
-        '<textarea class="input md-letter" data-af="cartaMotivacion" rows="10" ' +
-          'placeholder="La lettre envoy\u00e9e avec cette candidature\u2026">' +
-          esc(app.cartaMotivacion) + '</textarea>' +
+        foldHtml('lettre', 'Lettre de motivation',
+          app.cartaMotivacion
+            ? String(app.cartaMotivacion).length + ' caract\u00e8res'
+            : 'rien pour l\u2019instant',
+          '<textarea class="input md-letter" data-af="cartaMotivacion" rows="10" ' +
+            'placeholder="La lettre envoy\u00e9e avec cette candidature\u2026">' +
+            esc(app.cartaMotivacion) + '</textarea>') +
       '</section>' +
 
       '<section class="md-block">' +
@@ -1554,6 +1697,15 @@
   document.addEventListener('click', function (e) {
     if (e.target.closest('[data-close-modal]')) closeDetail();
   });
+
+  // 'toggle' no burbujea: se escucha en captura. Dentro de un pliegue cerrado
+  // scrollHeight es 0, asi que hay que medir los textarea al abrirlo.
+  $('modal-body').addEventListener('toggle', function (e) {
+    var det = e.target.closest ? e.target.closest('details.md-fold') : null;
+    if (!det) return;
+    var key = det.getAttribute('data-fold');
+    if (det.open) { openFolds[key] = true; autoGrowAll(det); } else delete openFolds[key];
+  }, true);
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && !$('modal').hidden) closeDetail();
   });
@@ -1571,11 +1723,15 @@
       if (!app) return;
       app[af] = t.value;
       if (t.tagName === 'TEXTAREA') autoGrow(t);
+      if (af === 'cartaMotivacion') {
+        foldMeta(t, t.value ? String(t.value).length + ' caract\u00e8res' : 'rien pour l\u2019instant');
+      }
       enqueue('app:' + app.id, 'upsertApplication', app);
     } else if (mq) {
       var q = byId(state.questions, t.closest('[data-qid]').getAttribute('data-qid'));
       if (!q) return;
       q[mq] = t.value; autoGrow(t);
+      if (mq === 'answer') foldMeta(t, peek(t.value, 46) || '\u00e0 \u00e9crire');
       enqueue('question:' + q.id, 'upsertQuestion', q);
     } else if (ml) {
       var l = byId(state.learnings, t.closest('[data-lid]').getAttribute('data-lid'));
@@ -1609,6 +1765,14 @@
   });
 
   $('modal-body').addEventListener('click', function (e) {
+    if (e.target.getAttribute('data-app-keep') || e.target.getAttribute('data-app-drop')) {
+      var app = byId(state.applications, openAppId);
+      if (!app) return;
+      app.estado = e.target.getAttribute('data-app-drop') ? ST_ECARTEE : '';
+      enqueue('app:' + app.id, 'upsertApplication', app);
+      closeDetail();   // closeDetail repinta la tabla y las questions
+      return;
+    }
     if (e.target.getAttribute('data-mq-del')) {
       var qid = e.target.closest('[data-qid]').getAttribute('data-qid');
       if (!confirm('Retirer cette question ?')) return;
@@ -1637,8 +1801,11 @@
         '<div class="md-row-main">' +
           '<textarea class="input" data-mq="question" rows="1" ' +
             'placeholder="La question qu\u2019on t\u2019a pos\u00e9e">' + esc(q.question) + '</textarea>' +
-          '<textarea class="input md-answer" data-mq="answer" rows="1" ' +
-            'placeholder="R\u00e9ponse \u00e0 donner la prochaine fois">' + esc(q.answer) + '</textarea>' +
+          foldHtml('answer:' + q.id, 'R\u00e9ponse \u00e0 donner',
+            peek(q.answer, 46) || '\u00e0 \u00e9crire',
+            '<textarea class="input md-answer" data-mq="answer" rows="1" ' +
+              'placeholder="R\u00e9ponse \u00e0 donner la prochaine fois">' + esc(q.answer) + '</textarea>',
+            'md-fold--sm') +
         '</div>' +
         '<div class="md-row-side">' +
           '<label class="md-mini">Su r\u00e9pondre ?</label>' +
@@ -1856,6 +2023,592 @@
       hint.textContent = 'La recherche d\u2019adresse n\u2019a pas r\u00e9pondu. ' +
         'Clique sur la carte pour poser le point.';
     });
+  }
+
+
+  // =====================================================================
+  //  Recherche assistee par IA
+  //  El usuario genera un prompt aqui, lo pega en su IA (otra ventana), y
+  //  trae de vuelta el JSON. Esta pagina no habla con ninguna IA: no hay
+  //  clave de API que guardar ni nada que se escape sin querer.
+  // =====================================================================
+
+  var AI_FIELDS = ['links', 'extra', 'ville', 'rayon', 'salaire', 'contrat',
+                   'teletravail', 'jours', 'max'];
+
+  var AI_DEFAULTS = {
+    links: '', extra: '', ville: 'Strasbourg', rayon: '30', salaire: '',
+    contrat: 'Peu importe', teletravail: 'Peu importe', jours: '30', max: '10'
+  };
+
+  /** Los criterios se quedan en el aparato, como la clave de la hoja. */
+  function aiPrefsKey() { return 'estrasburgo.aiSearch.' + state.profileId; }
+
+  function readAiPrefs() {
+    var out = {};
+    AI_FIELDS.forEach(function (f) { out[f] = AI_DEFAULTS[f]; });
+    try {
+      var raw = JSON.parse(localStorage.getItem(aiPrefsKey()) || '{}');
+      AI_FIELDS.forEach(function (f) {
+        if (typeof raw[f] === 'string') out[f] = raw[f];
+      });
+    } catch (e) { /* preferencias ilegibles: se usan las de serie */ }
+    return out;
+  }
+
+  function formAiPrefs() {
+    var out = {};
+    AI_FIELDS.forEach(function (f) { out[f] = $('ai-' + f).value; });
+    return out;
+  }
+
+  function saveAiPrefs() {
+    try { localStorage.setItem(aiPrefsKey(), JSON.stringify(formAiPrefs())); } catch (e) {}
+  }
+
+  // --- IA: funciones puras. Las pruebas las extraen entre estas dos marcas.
+
+  /** Clave para comparar textos escritos por humanos o por una IA. */
+  function normKey(s) {
+    var v = String(s == null ? '' : s).trim().toLowerCase();
+    if (v.normalize) v = v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return v.replace(/\s+/g, ' ');
+  }
+
+  function txt(v) {
+    if (v == null) return '';
+    if (typeof v === 'number') return String(v);
+    if (typeof v === 'string') return v.trim();
+    if (Object.prototype.toString.call(v) === '[object Array]') {
+      return v.map(txt).filter(Boolean).join(' \u00b7 ');
+    }
+    return '';
+  }
+
+  function arr(v) {
+    return Object.prototype.toString.call(v) === '[object Array]' ? v : (v ? [v] : []);
+  }
+
+  /** La IA escribe la modalidad a su manera: la traemos a la lista cerrada. */
+  function normModalite(value) {
+    var v = normKey(value);
+    if (!v) return '';
+    if (v.indexOf('hybrid') >= 0 || v.indexOf('partiel') >= 0) return 'Hybride';
+    if (v.indexOf('teletravail') >= 0 || v.indexOf('remote') >= 0 ||
+        v.indexOf('distance') >= 0 || v.indexOf('full remote') >= 0) return 'T\u00e9l\u00e9travail';
+    if (v.indexOf('presentiel') >= 0 || v.indexOf('sur place') >= 0 ||
+        v.indexOf('sur site') >= 0 || v.indexOf('bureau') >= 0) return 'Pr\u00e9sentiel';
+    return '';
+  }
+
+  /** La nota tiene que caer en la lista de 0 a 10, o quedarse vacia. */
+  function normNote(value) {
+    var raw = String(value == null ? '' : value).replace(',', '.').split('/')[0].trim();
+    if (!raw) return '';
+    var n = Math.round(Number(raw));
+    return (isNaN(n) || n < 0 || n > 10) ? '' : String(n);
+  }
+
+  /** Coordenada decimal en texto, o vacio si no es un numero creible. */
+  function normCoord(value) {
+    var raw = String(value == null ? '' : value).trim().replace(',', '.');
+    if (!raw) return '';
+    var n = Number(raw);
+    return (isNaN(n) || n < -180 || n > 180) ? '' : String(n);
+  }
+
+  /** Fecha ISO corta, o vacio. La IA a veces devuelve "septembre 2026". */
+  function normDate(value) {
+    var m = String(value == null ? '' : value).match(/(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[0] : '';
+  }
+
+  /**
+   * El texto que el usuario copia y pega en su IA. Lleva su perfil, sus tipos
+   * de puesto, sus criterios, lo que ya tiene apuntado (para que no se lo
+   * proponga otra vez) y el formato exacto de la respuesta.
+   */
+  function buildAiPrompt(prefs, ctx) {
+    var links = String(prefs.links || '').split(/[\n,;]+/).map(function (l) {
+      return l.trim();
+    }).filter(Boolean);
+
+    var maxOffres = Math.max(1, Math.min(50, Math.round(Number(prefs.max) || 10)));
+    var L = [];
+
+    L.push('Tu es mon assistant de recherche d\u2019emploi. Objectif : une recherche APPROFONDIE');
+    L.push('d\u2019offres r\u00e9elles et encore en ligne aujourd\u2019hui, puis une r\u00e9ponse en JSON strict.');
+    L.push('Utilise la recherche web. Prends le temps de croiser plusieurs plateformes.');
+    L.push('');
+
+    L.push('## 1. Qui je suis');
+    if (links.length) {
+      L.push('Ouvre vraiment ces pages et sers-t\u2019en pour me profiler (parcours, comp\u00e9tences, niveau) :');
+      links.forEach(function (l) { L.push('- ' + l); });
+    } else {
+      L.push('Je ne t\u2019ai donn\u00e9 aucun lien : profile-moi \u00e0 partir des types de poste ci-dessous.');
+    }
+    if (txt(prefs.extra)) {
+      L.push('');
+      L.push('\u00c0 savoir sur moi / pr\u00e9cisions : ' + txt(prefs.extra));
+    }
+    L.push('');
+
+    L.push('## 2. Les types de poste qui m\u2019int\u00e9ressent');
+    if (!ctx.jobTypes.length) {
+      L.push('(aucun renseign\u00e9)');
+    } else {
+      ctx.jobTypes.forEach(function (jt) {
+        var bits = ['\u00ab ' + (txt(jt.tipo) || 'sans titre') + ' \u00bb'];
+        if (txt(jt.porQue)) bits.push('pourquoi : ' + txt(jt.porQue));
+        if (txt(jt.nivelFrances)) bits.push('niveau de fran\u00e7ais attendu : ' + txt(jt.nivelFrances));
+        if (txt(jt.prioridad)) bits.push('priorit\u00e9 : ' + txt(jt.prioridad));
+        L.push('- ' + bits.join(' | '));
+      });
+    }
+    L.push('');
+
+    L.push('## 3. Mes crit\u00e8res');
+    L.push('- Lieu : ' + (txt(prefs.ville) || 'Strasbourg') +
+      (txt(prefs.rayon) ? ', dans un rayon d\u2019environ ' + txt(prefs.rayon) + ' km' : ''));
+    if (txt(prefs.salaire)) L.push('- Salaire minimum : ' + txt(prefs.salaire) + ' \u20ac brut par an');
+    if (txt(prefs.contrat) && normKey(prefs.contrat) !== 'peu importe') {
+      L.push('- Type de contrat : ' + txt(prefs.contrat));
+    }
+    if (txt(prefs.teletravail) && normKey(prefs.teletravail) !== 'peu importe') {
+      L.push('- Pr\u00e9sence sur place : ' + txt(prefs.teletravail));
+    }
+    if (txt(prefs.jours)) L.push('- Offres publi\u00e9es depuis moins de ' + txt(prefs.jours) + ' jours');
+    L.push('- Nombre maximum d\u2019offres \u00e0 me retourner : ' + maxOffres);
+    L.push('');
+
+    L.push('## 4. O\u00f9 chercher');
+    L.push('Balaye les grandes plateformes fran\u00e7aises, pas une seule : France Travail, LinkedIn,');
+    L.push('Indeed, HelloWork, Welcome to the Jungle, APEC, Cadremploi, Monster, Meteojob,');
+    L.push('Talent.com, Jobijoba, RegionsJob, Glassdoor, JobTeaser, les agences d\u2019int\u00e9rim');
+    L.push('(Manpower, Adecco, Randstad, Synergie), les sites carri\u00e8re des entreprises de la');
+    L.push('r\u00e9gion, et le secteur public (Emploi Territorial, Choisir le service public) si \u00e7a colle.');
+    L.push('Pour chaque offre retenue, v\u00e9rifie qu\u2019elle est encore ouverte et garde son lien direct.');
+    L.push('');
+
+    L.push('## 5. Ce que j\u2019ai d\u00e9j\u00e0 dans mon suivi \u2014 ne me le propose pas');
+    var deja = ctx.applications.filter(function (a) {
+      return txt(a.empresa) || txt(a.puesto);
+    });
+    if (!deja.length) {
+      L.push('(rien pour l\u2019instant)');
+    } else {
+      deja.forEach(function (a) {
+        L.push('- ' + (txt(a.empresa) || '?') + ' \u2014 ' + (txt(a.puesto) || 'poste non pr\u00e9cis\u00e9') +
+          (txt(a.enlace) ? ' (' + txt(a.enlace) + ')' : ''));
+      });
+    }
+    L.push('');
+
+    L.push('## 6. Format de ta r\u00e9ponse');
+    L.push('R\u00e9ponds UNIQUEMENT avec un bloc de code JSON valide, sans une phrase avant ni');
+    L.push('apr\u00e8s, et sans commentaires dans le JSON. Exactement dans cette forme');
+    L.push('(les cl\u00e9s ne changent pas) :');
+    L.push('');
+    L.push('```json');
+    L.push('{');
+    L.push('  "offres": [');
+    L.push('    {');
+    L.push('      "typeDePoste": "reprends exactement un libell\u00e9 de la section 2",');
+    L.push('      "poste": "titre exact de l\u2019offre",');
+    L.push('      "lien": "https://url-directe-de-l-offre",');
+    L.push('      "source": "plateforme o\u00f9 tu l\u2019as trouv\u00e9e",');
+    L.push('      "datePublication": "AAAA-MM-JJ",');
+    L.push('      "salaire": "tel qu\u2019affich\u00e9 dans l\u2019offre, sinon vide",');
+    L.push('      "modalite": "Pr\u00e9sentiel ou Hybride ou T\u00e9l\u00e9travail, sinon vide",');
+    L.push('      "missions": "ce que le poste demande, en 2 ou 3 phrases",');
+    L.push('      "avantages": "avantages annonc\u00e9s",');
+    L.push('      "adresse": "adresse du poste si elle diff\u00e8re du si\u00e8ge",');
+    L.push('      "lat": "", "lon": "",');
+    L.push('      "note": "ta note de 0 \u00e0 10 sur l\u2019ad\u00e9quation avec mon profil",');
+    L.push('      "pourquoiCetteNote": "une phrase : ce qui est bien, ce qui l\u2019est moins",');
+    L.push('      "entreprise": {');
+    L.push('        "nom": "nom de l\u2019entreprise",');
+    L.push('        "description": "ce qu\u2019elle fait, taille, secteur",');
+    L.push('        "adresse": "adresse postale du site concern\u00e9",');
+    L.push('        "lat": "", "lon": ""');
+    L.push('      },');
+    L.push('      "questionsProbables": ["questions que cette entreprise risque de me poser"],');
+    L.push('      "aSavoir": ["infos utiles : process de recrutement, actualit\u00e9, r\u00e9putation"],');
+    L.push('      "contacts": [{ "nom": "", "role": "", "email": "", "telephone": "" }]');
+    L.push('    }');
+    L.push('  ]');
+    L.push('}');
+    L.push('```');
+    L.push('');
+    L.push('R\u00e8gles :');
+    L.push('- N\u2019invente RIEN. Un champ que tu ne connais pas reste une cha\u00eene vide "".');
+    L.push('  Pas de salaire devin\u00e9, pas de contact invent\u00e9, pas de lien reconstruit de t\u00eate.');
+    L.push('- "lien" est obligatoire : une offre sans URL v\u00e9rifiable ne va pas dans la liste.');
+    L.push('- "typeDePoste" doit reprendre au caract\u00e8re pr\u00e8s un des libell\u00e9s de la section 2.');
+    L.push('- "modalite" : uniquement "Pr\u00e9sentiel", "Hybride", "T\u00e9l\u00e9travail" ou "".');
+    L.push('- "lat"/"lon" : coordonn\u00e9es d\u00e9cimales en texte ("48.5734"), sinon "".');
+    L.push('- ' + maxOffres + ' offres au maximum, les plus pertinentes d\u2019abord, sans doublon');
+    L.push('  entre elles ni avec la section 5.');
+    L.push('- Si tu ne trouves rien de s\u00e9rieux, renvoie "offres": [] plut\u00f4t que du remplissage.');
+
+    return L.join('\n');
+  }
+
+  /**
+   * Saca las ofertas de lo que sea que haya pegado el usuario: el objeto a
+   * pelo, un bloque ```json ... ``` o el JSON con frases alrededor.
+   */
+  function parseAiOffers(text) {
+    var raw = String(text || '').trim();
+    if (!raw) return { error: 'Colle d\u2019abord la r\u00e9ponse de l\u2019IA dans le cadre.' };
+
+    var best = '';
+    raw.replace(/```(?:json)?\s*([\s\S]*?)```/gi, function (_, inner) {
+      inner = String(inner).trim();
+      if (inner.indexOf('{') >= 0 && inner.length > best.length) best = inner;
+      return '';
+    });
+    if (best) {
+      raw = best;
+    } else if (raw.charAt(0) !== '{' && raw.charAt(0) !== '[') {
+      // Hay frases delante: nos quedamos con el objeto. Solo si no empieza ya
+      // por JSON, o a un array a pelo le arrancariamos los corchetes.
+      var a = raw.indexOf('{');
+      var b = raw.lastIndexOf('}');
+      if (a >= 0 && b > a) raw = raw.slice(a, b + 1);
+    }
+
+    var data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      return { error: 'Ce n\u2019est pas du JSON valide (' + e.message + '). Redemande \u00e0 l\u2019IA ' +
+        'le bloc de code JSON seul, sans texte autour.' };
+    }
+
+    var list = null;
+    if (Object.prototype.toString.call(data) === '[object Array]') list = data;
+    else if (data && typeof data === 'object') {
+      list = data.offres || data.offers || data.candidatures || data.jobs || null;
+    }
+    if (Object.prototype.toString.call(list) !== '[object Array]') {
+      return { error: 'Le JSON ne contient pas de liste \u00ab offres \u00bb.' };
+    }
+    return { offers: list };
+  }
+
+  /**
+   * Convierte las ofertas de la IA en filas de la hoja. No escribe nada:
+   * devuelve lo que habria que guardar y un informe de lo que descarta.
+   */
+  function buildImportPayload(offers, ctx) {
+    if (!ctx.jobTypes.length) {
+      return { error: 'Ajoute d\u2019abord un type de poste dans la section 2 : ' +
+        'chaque candidature appartient \u00e0 l\u2019un d\u2019eux.' };
+    }
+
+    var out = { companies: [], applications: [], questions: [], learnings: [], contacts: [] };
+    var report = { kept: [], skipped: [], warnings: [], newCompanies: [] };
+
+    // Indices anti-duplicados: lo que ya hay en el suivi mas lo que vamos creando.
+    var seenLink = {}, seenPair = {}, coByName = {};
+    ctx.applications.forEach(function (a) {
+      if (txt(a.enlace)) seenLink[normKey(a.enlace)] = true;
+      seenPair[normKey(a.empresa) + '|' + normKey(a.puesto)] = true;
+    });
+    ctx.companies.forEach(function (c) { coByName[normKey(c.name)] = c; });
+
+    function maxPos(rows) {
+      return rows.reduce(function (m, r) {
+        var n = Number(r.position);
+        return isNaN(n) ? m : Math.max(m, n);
+      }, 0);
+    }
+    var coPos = maxPos(ctx.companies);
+    var appPos = {};
+    ctx.jobTypes.forEach(function (jt) {
+      appPos[jt.id] = maxPos(ctx.applications.filter(function (a) {
+        return a.jobTypeId === jt.id;
+      }));
+    });
+
+    offers.forEach(function (raw, i) {
+      var o = raw || {};
+      var co = o.entreprise || o.company || {};
+      var nom = txt(co.nom || co.name);
+      var poste = txt(o.poste || o.titre || o.title);
+      var lien = txt(o.lien || o.url || o.link);
+      var label = nom || poste || 'Offre ' + (i + 1);
+
+      if (!nom && !poste) {
+        report.skipped.push({ label: 'Offre ' + (i + 1), why: 'ni entreprise ni poste' });
+        return;
+      }
+      if (lien && seenLink[normKey(lien)]) {
+        report.skipped.push({ label: label, why: 'ce lien est d\u00e9j\u00e0 dans ton suivi' });
+        return;
+      }
+      var pair = normKey(nom) + '|' + normKey(poste);
+      if (seenPair[pair]) {
+        report.skipped.push({ label: label, why: 'd\u00e9j\u00e0 dans ton suivi' });
+        return;
+      }
+      seenPair[pair] = true;
+      if (lien) seenLink[normKey(lien)] = true;
+
+      // Tipo de puesto: por nombre exacto, luego por parecido, y si no el primero.
+      var wanted = normKey(o.typeDePoste || o.type || '');
+      var jt = null;
+      if (wanted) {
+        ctx.jobTypes.forEach(function (t) {
+          if (!jt && normKey(t.tipo) === wanted) jt = t;
+        });
+        if (!jt) {
+          ctx.jobTypes.forEach(function (t) {
+            var k = normKey(t.tipo);
+            if (!jt && k && (k.indexOf(wanted) >= 0 || wanted.indexOf(k) >= 0)) jt = t;
+          });
+        }
+      }
+      if (!jt) {
+        jt = ctx.jobTypes[0];
+        report.warnings.push(label + ' : type de poste ' +
+          (wanted ? '\u00ab ' + txt(o.typeDePoste) + ' \u00bb inconnu' : 'non pr\u00e9cis\u00e9') +
+          ', rang\u00e9e dans \u00ab ' + (txt(jt.tipo) || 'le premier type') + ' \u00bb');
+      }
+
+      if (nom && !coByName[normKey(nom)]) {
+        coPos += 10;
+        var coRow = {
+          id: ctx.uid(), profileId: ctx.profileId, position: coPos, name: nom,
+          description: txt(co.description),
+          ubicacion: txt(co.adresse || co.ubicacion),
+          lat: normCoord(co.lat), lon: normCoord(co.lon)
+        };
+        out.companies.push(coRow);
+        coByName[normKey(nom)] = coRow;
+        report.newCompanies.push(nom);
+      }
+
+      var appId = ctx.uid();
+      appPos[jt.id] = (appPos[jt.id] || 0) + 10;
+      out.applications.push({
+        id: appId, profileId: ctx.profileId, jobTypeId: jt.id, position: appPos[jt.id],
+        fecha: ctx.today, empresa: nom, puesto: poste,
+        fuente: txt(o.source || o.plateforme || o.platform),
+        estado: ST_A_VALIDER, proximaAccion: '', enlace: lien,
+        nota: normNote(o.note), misiones: txt(o.missions || o.missiones),
+        sueldo: txt(o.salaire), modalidad: normModalite(o.modalite),
+        ventajas: txt(o.avantages), ubicacion: txt(o.adresse || o.lieu),
+        lat: normCoord(o.lat), lon: normCoord(o.lon),
+        notaComentario: txt(o.pourquoiCetteNote), cartaMotivacion: ''
+      });
+
+      arr(o.questionsProbables || o.questions).forEach(function (q, k) {
+        var pregunta = txt(q && q.question ? q.question : q);
+        if (!pregunta) return;
+        out.questions.push({
+          id: ctx.uid(), profileId: ctx.profileId, applicationId: appId,
+          position: (k + 1) * 10, question: pregunta, answered: '',
+          answer: txt(q && q.answer)
+        });
+      });
+
+      var infos = arr(o.aSavoir || o.infos).map(txt).filter(Boolean);
+      var pub = normDate(o.datePublication);
+      var src = txt(o.source || o.plateforme);
+      if (pub || src) {
+        infos.unshift('Offre trouv\u00e9e par l\u2019IA' + (src ? ' sur ' + src : '') +
+          (pub ? ', publi\u00e9e le ' + pub : '') + '.');
+      }
+      infos.forEach(function (info, k) {
+        out.learnings.push({
+          id: ctx.uid(), profileId: ctx.profileId, applicationId: appId,
+          position: (k + 1) * 10, note: info
+        });
+      });
+
+      arr(o.contacts).forEach(function (c, k) {
+        c = c || {};
+        var row = {
+          id: ctx.uid(), profileId: ctx.profileId, applicationId: appId,
+          position: (k + 1) * 10, name: txt(c.nom || c.name), role: txt(c.role || c.poste),
+          email: txt(c.email), phone: txt(c.telephone || c.phone)
+        };
+        if (row.name || row.role || row.email || row.phone) out.contacts.push(row);
+      });
+
+      report.kept.push({ label: label, poste: poste, jobType: txt(jt.tipo) });
+    });
+
+    return { payload: out, report: report };
+  }
+
+  // --- fin de las funciones puras de la IA
+
+  function aiCtx() {
+    return {
+      profileId: state.profileId,
+      jobTypes: state.jobTypes,
+      applications: state.applications,
+      companies: state.companies,
+      today: today(),
+      uid: uid
+    };
+  }
+
+  function openAiModal() {
+    var prefs = readAiPrefs();
+    AI_FIELDS.forEach(function (f) { $('ai-' + f).value = prefs[f]; });
+    $('ai-prompt').value = '';
+    $('ai-report').innerHTML = '';
+    $('ai-copy-state').textContent = '';
+    hideBanner('ai-error');
+
+    var sinTipos = !state.jobTypes.length;
+    if (sinTipos) {
+      showBanner('ai-error', 'Ajoute d\u2019abord au moins un type de poste dans la section 2 : ' +
+        'c\u2019est ce qui dit \u00e0 l\u2019IA quoi chercher, et c\u2019est l\u00e0 que les offres viendront se ranger.');
+    }
+    $('ai-gen').disabled = sinTipos;
+    $('ai-import').disabled = sinTipos;
+
+    $('ai-modal').hidden = false;
+    document.body.classList.add('modal-open');
+    autoGrow($('ai-links'));
+    autoGrow($('ai-extra'));
+  }
+
+  function closeAiModal() {
+    saveAiPrefs();
+    $('ai-modal').hidden = true;
+    if ($('modal').hidden) document.body.classList.remove('modal-open');
+  }
+
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    // Safari antiguo y http: el textarea ya esta a la vista, se selecciona.
+    return Promise.reject(new Error('presse-papiers indisponible'));
+  }
+
+  $('ai-modal').addEventListener('click', function (e) {
+    if (e.target.closest('[data-close-ai]')) return closeAiModal();
+
+    if (e.target.id === 'ai-gen' || e.target.id === 'ai-copy') {
+      // "Copier a nouveau" sin nada generado todavia: se genera igual, en vez
+      // de no hacer nada y dejar al usuario mirando el boton.
+      if (e.target.id === 'ai-gen' || !$('ai-prompt').value) {
+        saveAiPrefs();
+        $('ai-prompt').value = buildAiPrompt(formAiPrefs(), aiCtx());
+        $('ai-prompt').scrollTop = 0;
+      }
+      var text = $('ai-prompt').value;
+      if (!text) return;
+      copyToClipboard(text).then(function () {
+        $('ai-copy-state').textContent = 'Copi\u00e9 ! Colle-le dans ton IA.';
+      }).catch(function () {
+        $('ai-prompt').select();
+        $('ai-copy-state').textContent = 'Copie automatique refus\u00e9e : le texte est s\u00e9lectionn\u00e9, ' +
+          'fais Ctrl/Cmd + C.';
+      });
+      return;
+    }
+
+    if (e.target.id === 'ai-import') importAiOffers();
+  });
+
+  $('ai-modal').addEventListener('input', function (e) {
+    // ai-json y ai-prompt tienen su propio scroll: no crecen solos.
+    if (e.target.id === 'ai-links' || e.target.id === 'ai-extra') autoGrow(e.target);
+    if (e.target.id === 'ai-json') return;
+    if (String(e.target.id).indexOf('ai-') === 0) saveAiPrefs();
+  });
+  $('ai-modal').addEventListener('change', saveAiPrefs);
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('ai-modal').hidden) closeAiModal();
+  });
+
+  /** Del JSON pegado a la hoja, en una sola peticion. */
+  function importAiOffers() {
+    hideBanner('ai-error');
+    $('ai-report').innerHTML = '';
+
+    var parsed = parseAiOffers($('ai-json').value);
+    if (parsed.error) return showBanner('ai-error', parsed.error);
+
+    var built = buildImportPayload(parsed.offers, aiCtx());
+    if (built.error) return showBanner('ai-error', built.error);
+
+    var rep = built.report;
+    if (!rep.kept.length) {
+      showBanner('ai-error', 'Rien \u00e0 importer : ' + (rep.skipped.length
+        ? 'les ' + rep.skipped.length + ' offre(s) re\u00e7ues sont d\u00e9j\u00e0 dans ton suivi.'
+        : 'la liste \u00ab offres \u00bb est vide.'));
+      $('ai-report').innerHTML = aiReportHtml(rep, false);
+      return;
+    }
+
+    var payload = built.payload;
+    payload.profileId = state.profileId;
+
+    $('ai-import').disabled = true;
+    $('ai-import').textContent = 'Import en cours\u2026';
+
+    api('importOffers', payload).then(function () {
+      // La hoja ya lo tiene: ahora el estado local, sin recargar el perfil.
+      ['companies', 'applications', 'questions', 'learnings', 'contacts'].forEach(function (k) {
+        state[k] = state[k].concat(payload[k]);
+      });
+      renderCompanies();
+      renderTracking();
+      renderAllQuestions();
+      $('ai-json').value = '';
+      $('ai-report').innerHTML = aiReportHtml(rep, true);
+      setSaveState('saved');
+    }).catch(function (err) {
+      showBanner('ai-error', 'Import impossible : ' + err.message +
+        ' \u2014 rien n\u2019a \u00e9t\u00e9 ajout\u00e9, tu peux recoller le JSON et r\u00e9essayer.');
+    }).then(function () {
+      $('ai-import').disabled = false;
+      $('ai-import').textContent = 'Importer les offres';
+    });
+  }
+
+  function aiReportHtml(rep, done) {
+    var h = '';
+    if (done) {
+      h += '<p class="ai-ok"><strong>' + rep.kept.length + ' offre' +
+        (rep.kept.length === 1 ? '' : 's') + ' import\u00e9e' + (rep.kept.length === 1 ? '' : 's') +
+        '</strong> dans le suivi, au statut \u00ab ' + esc(ST_A_VALIDER) + ' \u00bb' +
+        (rep.newCompanies.length ? ', avec ' + rep.newCompanies.length + ' nouvelle' +
+          (rep.newCompanies.length === 1 ? '' : 's') + ' entreprise' +
+          (rep.newCompanies.length === 1 ? '' : 's') : '') + '.</p>';
+      h += '<ul class="ai-list">' + rep.kept.map(function (k) {
+        return '<li>' + esc(k.label) + (k.poste ? ' \u2014 ' + esc(k.poste) : '') +
+          ' <span class="count-hint">(' + esc(k.jobType) + ')</span></li>';
+      }).join('') + '</ul>';
+    }
+    if (rep.skipped.length) {
+      h += '<p class="ai-note"><strong>' + rep.skipped.length + ' \u00e9cart\u00e9e' +
+        (rep.skipped.length === 1 ? '' : 's') + ' \u00e0 l\u2019import :</strong></p>' +
+        '<ul class="ai-list">' + rep.skipped.map(function (k) {
+          return '<li>' + esc(k.label) + ' \u2014 ' + esc(k.why) + '</li>';
+        }).join('') + '</ul>';
+    }
+    if (rep.warnings.length) {
+      h += '<ul class="ai-list ai-list--warn">' + rep.warnings.map(function (w) {
+        return '<li>' + esc(w) + '</li>';
+      }).join('') + '</ul>';
+    }
+    if (done) {
+      h += '<p class="ai-note">Ouvre chaque fiche pour v\u00e9rifier, puis garde ou \u00e9carte l\u2019offre. ' +
+        'Rien n\u2019est envoy\u00e9 \u00e0 ta place.</p>';
+    }
+    return h;
   }
 
   // =====================================================================

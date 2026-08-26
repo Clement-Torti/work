@@ -95,6 +95,8 @@ function route(req) {
     case 'deleteLearning':    return { removed: remove('Learnings', p.id) };
     case 'upsertContact':     return { row: upsert('Contacts', p) };
     case 'deleteContact':     return { removed: remove('Contacts', p.id) };
+
+    case 'importOffers':      return importOffers(p);
   }
   throw new Error('Accion desconocida: ' + action);
 }
@@ -140,6 +142,44 @@ function deleteJobType(id) {
 function deleteApplication(id) {
   CHILDREN.forEach(function (name) { removeWhere(name, 'applicationId', id); });
   return { removed: remove('Applications', id) };
+}
+
+/**
+ * Escritura en bloque de lo que ha encontrado la IA: empresas, candidaturas y
+ * su detalle, de una vez. Existe para no mandar sesenta peticiones seguidas
+ * desde el navegador; una importacion son muchas filas de golpe.
+ *
+ * No borra ni sobreescribe nada por su cuenta: cada fila llega con un id
+ * nuevo, asi que upsert las anade.
+ */
+var IMPORT_TABLES = [
+  ['companies', 'Companies'],
+  ['applications', 'Applications'],
+  ['questions', 'Questions'],
+  ['learnings', 'Learnings'],
+  ['contacts', 'Contacts']
+];
+
+var IMPORT_MAX_ROWS = 600;
+
+function importOffers(p) {
+  var total = 0;
+  IMPORT_TABLES.forEach(function (pair) {
+    var rows = p[pair[0]];
+    if (rows && rows.length) total += rows.length;
+  });
+  if (!total) throw new Error('No hay nada que importar');
+  if (total > IMPORT_MAX_ROWS) {
+    throw new Error('Demasiadas filas de una vez (' + total + '). Importa en varias tandas.');
+  }
+
+  var imported = {};
+  IMPORT_TABLES.forEach(function (pair) {
+    var rows = p[pair[0]] || [];
+    rows.forEach(function (row) { upsert(pair[1], row); });
+    if (rows.length) imported[pair[0]] = rows.length;
+  });
+  return { imported: imported, rows: total };
 }
 
 function loadProfile(profileId) {

@@ -29,6 +29,10 @@
   --red-soft:    #FBEDED;
   --green:       #1B7A4B;
   --green-soft:  #E7F4EC;
+  /* Violeta: todo lo que viene de la IA y esta por validar. */
+  --violet:      #5B4B9A;
+  --violet-soft: #F1EEFA;
+  --violet-line: #DCD4F0;
 
   --radius:      10px;
   --shadow:      0 1px 2px rgba(20, 40, 36, .05), 0 8px 28px rgba(20, 40, 36, .07);
@@ -270,6 +274,15 @@ table.grid tbody tr:hover { background: var(--teal-soft); }
 
 td.cell-actions { width: 44px; text-align: center; padding: 4px; }
 
+/* Propuesta de la IA, pendiente de validar. El inset evita mover la celda. */
+table.grid tbody tr.is-avalider { background: var(--violet-soft); }
+table.grid tbody tr.is-avalider:hover { background: #EAE5F7; }
+table.grid tbody tr.is-avalider td:first-child { box-shadow: inset 3px 0 0 var(--violet); }
+
+/* Refusée ou écartée: visible solo con el filtro, y en segundo plano. */
+table.grid tbody tr.is-masquee { opacity: .6; }
+table.grid tbody tr.is-masquee:hover { opacity: 1; }
+
 /* celdas editables: el input ocupa la celda entera, sin marco */
 .cell-input,
 .cell-select {
@@ -297,6 +310,7 @@ textarea.cell-input { display: block; resize: vertical; min-height: 42px; }
 
 /* select coloreado según su valor */
 .cell-select[data-tone="todo"]     { color: var(--muted); }
+.cell-select[data-tone="ai"]       { color: var(--violet); background: var(--violet-soft); font-weight: 700; }
 .cell-select[data-tone="sent"]     { color: var(--blue);  background: var(--blue-soft);  font-weight: 600; }
 .cell-select[data-tone="progress"] { color: var(--amber); background: var(--amber-soft); font-weight: 600; }
 .cell-select[data-tone="good"]     { color: var(--green); background: var(--green-soft); font-weight: 600; }
@@ -314,6 +328,24 @@ textarea.cell-input { display: block; resize: vertical; min-height: 42px; }
 }
 
 .count-hint { color: var(--faint); font-size: 13.5px; }
+
+/* --------------------------------------- barre de la section 4 (suivi + IA) */
+
+.tracking-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.pill--ai { background: var(--violet-soft); color: var(--violet); }
 
 /* ------------------------------- questions groupees par entreprise (sec. 4) */
 
@@ -684,11 +716,14 @@ details.help code {
 @media print {
   body { background: #fff; }
   .sheet { margin: 0; border: 0; box-shadow: none; max-width: none; }
-  .btn, .row-del, .save-state, .table-foot, .topbar .btn { display: none !important; }
+  .btn, .row-del, .save-state, .table-foot, .topbar .btn,
+  .tracking-bar, .md-verdict .row-actions { display: none !important; }
   .cell-input, .cell-select { border: 0 !important; }
   /* Los grupos van cerrados por defecto: en papel se abren todos. */
   .qgroup:not([open]) > .table-wrap { display: block; }
-  .qgroup-head::before { display: none; }
+  .md-fold:not([open]) > .md-fold-body { display: block; }
+  .qgroup-head::before, .md-fold-head::before { display: none; }
+  .md-fold-meta { display: none; }
 }
 
 /* ------------------------------- enlace opcional de la oferta */
@@ -930,6 +965,48 @@ body.modal-open { overflow: hidden; }
 
 .md-hint { margin: 7px 0 10px; color: var(--faint); font-size: 12.5px; }
 
+/* Cabecera de decisión d'une offre proposée par l'IA */
+.md-verdict {
+  margin: 14px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--violet-line);
+  border-left: 4px solid var(--violet);
+  border-radius: 9px;
+  background: var(--violet-soft);
+}
+.md-verdict--off { border-color: var(--line-strong); border-left-color: var(--faint); background: #F7F8F8; }
+.md-verdict-text { margin: 0 0 10px; color: var(--ink-soft); font-size: 14.5px; }
+.md-verdict strong { color: var(--violet); }
+.md-verdict--off strong { color: var(--ink-soft); }
+
+/* Le prompt et le JSON: du texte technique, en monospace */
+.ai-code {
+  display: block;
+  margin-top: 10px;
+  font-family: Consolas, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  resize: vertical;
+  min-height: 150px;
+  max-height: 45vh;
+}
+#ai-prompt { background: #FBFCFC; color: var(--ink-soft); }
+
+.ai-report:not(:empty) {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #FBFCFC;
+}
+.ai-ok { margin: 0 0 8px; color: var(--green); font-size: 14.5px; }
+.ai-note { margin: 8px 0 0; color: var(--muted); font-size: 13.5px; }
+.ai-list { margin: 4px 0 0; padding-left: 20px; color: var(--ink-soft); font-size: 13.5px; }
+.ai-list li { margin-bottom: 3px; }
+.ai-list--warn { color: var(--amber); }
+
 .md-map {
   /* Contexte d'empilement isolé : les z-index internes de Leaflet (contrôles,
      popups) restent sous l'en-tête collant du modal, sans toucher à l'ordre
@@ -964,6 +1041,59 @@ body.modal-open { overflow: hidden; }
 .md-row-main .input { font-size: 14.5px; padding: 8px 10px; }
 
 .md-answer { background: var(--teal-soft) !important; border-color: var(--teal-line) !important; }
+
+/* ---------------------------------------- blocs repliables de la fiche */
+
+.md-fold { min-width: 0; }
+
+.md-fold-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  cursor: pointer;
+  list-style: none;
+}
+.md-fold-head::-webkit-details-marker { display: none; }
+
+/* Le triangle, dessiné à la main pour qu'il tourne */
+.md-fold-head::before {
+  content: '\25B8';
+  color: var(--teal);
+  font-size: 12px;
+  line-height: 1.5;
+  transition: transform .12s ease;
+}
+.md-fold[open] > .md-fold-head::before { transform: rotate(90deg); }
+
+/* Fermé, le titre a la même allure qu'un titre de bloc (.md-h) */
+.md-fold-title {
+  color: var(--ink-soft);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+.md-fold-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 12.5px;
+  font-style: italic;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.md-fold-body { margin-top: 10px; }
+
+/* Variante compacte : la réponse d'une question, dans sa ligne */
+.md-fold--sm .md-fold-title {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+.md-fold--sm .md-fold-head::before { font-size: 10px; }
+.md-fold--sm .md-fold-meta { font-size: 12px; }
+.md-fold--sm .md-fold-body { margin-top: 5px; }
 
 .md-row-side { display: grid; gap: 3px; width: 122px; }
 .md-mini { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; }

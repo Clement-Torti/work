@@ -17,6 +17,10 @@ guardados en **tu propia hoja de Google Sheets**.
 - Nota sobre 10 por candidatura (con un texto libre para explicar por qué esa nota), y
   una **ficha detallada** por candidatura con mapa, misiones, sueldo, modalidad,
   ventajas, lettre de motivation, preguntas de entrevista y contactos.
+- **Búsqueda de ofertas con IA**: la página genera un prompt con tu perfil, tus tipos de
+  puesto y lo que ya tienes apuntado; tú lo pegas en la IA que quieras y traes de vuelta
+  su JSON, que se convierte en candidaturas «à valider». La página no habla con ninguna
+  IA: no hay clave de API que guardar.
 
 ---
 
@@ -120,6 +124,12 @@ rompieron una vez:
   `Code.gs`, que `loadProfile` devuelve todas las colecciones que la página lee, y que no
   hay tablas fantasma. Existe porque se subió la página llamando a `upsertCompany` con el
   script sin esa ruta.
+- **El circuito de la IA.** Que el prompt lleva el perfil, los tipos de puesto, los
+  criterios y las candidaturas que ya existen; que el ejemplo de JSON que le damos es
+  JSON válido; que la respuesta se lee venga como venga (bloque de código, objeto a
+  pelo, con frases alrededor); que las filas generadas encajan **exactamente** con las
+  columnas de la hoja —un campo de más se perdería en silencio—; y que `importOffers`
+  escribe de verdad contra el simulador de Sheets.
 - **La estructura del modal.** Que el scroll vive en `.modal-body` y la cabecera no es
   `sticky`. Cuando `.modal` era a la vez contenedor flex con `margin:auto` y el elemento
   con scroll, un panel más alto que la pantalla desplazaba su borde superior por encima
@@ -185,6 +195,9 @@ Las columnas nuevas se añaden **siempre al final**. Insertarlas en medio desali
 las filas ya guardadas: es la razón por la que `nota` aparece después de `enlace` y no
 junto a `estado`, aunque en la página salgan seguidas.
 
+La importación de la IA escribe todas sus filas de una vez, con la acción `importOffers`:
+una sola petición en vez de sesenta seguidas.
+
 Se puede editar a mano en Sheets sin problema, siempre que no se toque la columna `id`
 ni la fila de cabeceras. Borrar un tipo de puesto desde la página borra también sus
 candidaturas; borrar un perfil borra todo lo suyo.
@@ -213,12 +226,31 @@ candidaturas; borrar un perfil borra todo lo suyo.
    del puesto y, en cuanto hay algo escrito, aparece una flecha ↗ para abrirla en otra
    pestaña. Se puede pegar sin `https://` delante.
 
+   **Chercher avec l'IA** (botón encima de las tablas) abre un formulario: enlaces que
+   hablan de ti (LinkedIn, portfolio…), ciudad, radio, salario mínimo, contrato,
+   teletrabajo, antigüedad máxima de las ofertas, cuántas quieres y un campo libre. Con
+   eso genera un prompt —al que añade tus tipos de puesto y la lista de lo que ya tienes,
+   para que no te lo repita— y lo copia al portapapeles. Pegas la respuesta JSON de la IA
+   en el mismo modal y las ofertas entran como candidaturas en estado **«À valider»**,
+   con su empresa, sus preguntas probables, lo que la IA ha averiguado y sus contactos.
+   Los criterios del formulario se quedan en el `localStorage` del aparato, como la clave
+   de la hoja; las ofertas, en la hoja.
+
+   Cada oferta importada se revisa desde su ficha: **Garder** la convierte en una
+   candidatura normal, **L'écarter** la pasa al estado «Écartée». Ni «Écartée» ni
+   «Refusée» se borran: salen de la tabla y el botón *Afficher les N offres masquées*
+   las devuelve a la vista. Nada se envía ni se borra en tu nombre.
+
    El botón **Fiche** abre la ficha detallada, con un contador de cuántos datos hay
    dentro. La ficha guarda: misiones, fourchette de salaire, modalidad (presencial /
    híbrido / teletrabajo), el porqué de la nota, ventajas, la lettre de motivation
-   enviada, ubicación con mapa, las preguntas que te hicieron
+   enviada —**plegada** por defecto, con el número de caracteres en la cabecera, porque
+   ocupa toda la pantalla si no—, ubicación con mapa, las preguntas que te hicieron
    en la entrevista (y si supiste responder), lo que aprendiste, y los contactos en la
    empresa (nombre, puesto, correo, teléfono, con enlaces para escribir o llamar).
+   La **respuesta** de cada pregunta también va plegada, con las primeras palabras a la
+   vista: con quince preguntas apuntadas, la lista se lee de un vistazo. Los pliegues que
+   abres se quedan abiertos mientras no recargues la página, y al imprimir se abren todos.
 
    La columna **Entreprise** es un campo de texto libre con autocompletado (`<datalist>`)
    de las empresas de la sección 3.

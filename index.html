@@ -181,7 +181,10 @@
     <p class="section-lead">
       Un tableau par type de poste, pour voir d'un coup d'œil ce qui est parti et ce qu'il reste
       à faire. Clique sur <strong>Fiche</strong> pour ouvrir le détail d'une candidature.
+      <strong>Chercher avec l'IA</strong> prépare un prompt de recherche d'offres à partir de ton
+      profil : les offres rapportées arrivent au statut « À valider », à garder ou à écarter.
     </p>
+    <div id="tracking-bar" class="tracking-bar"></div>
     <div id="stats" class="stats"></div>
     <div id="tracking"></div>
   </section>
@@ -218,6 +221,121 @@
       <button class="modal-close" type="button" data-close-modal aria-label="Fermer la fiche">×</button>
     </header>
     <div id="modal-body" class="modal-body"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     Chercher des offres avec l'IA
+     Le prompt se génère ici, l'utilisateur le passe à son IA dans une autre
+     fenêtre, et ramène le JSON. La page ne parle à aucune IA elle-même.
+     ============================================================ -->
+<div id="ai-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="ai-title">
+  <div class="modal-backdrop" data-close-ai></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <div>
+        <h2 id="ai-title" class="modal-title">✨ Chercher des offres avec l'IA</h2>
+        <p id="ai-sub" class="modal-sub">Tu génères le prompt ici, tu le colles dans ton IA, tu ramènes sa réponse</p>
+      </div>
+      <button class="modal-close" type="button" data-close-ai aria-label="Fermer">×</button>
+    </header>
+
+    <div class="modal-body">
+      <div id="ai-error" class="banner" hidden></div>
+
+      <section class="md-block">
+        <h3 class="md-h">1. Qui tu es</h3>
+        <div class="field">
+          <label for="ai-links">Liens qui parlent de toi</label>
+          <textarea id="ai-links" class="input" rows="3"
+                    placeholder="https://linkedin.com/in/…&#10;https://mon-portfolio.fr&#10;un lien par ligne"
+                    spellcheck="false"></textarea>
+          <p class="hint">LinkedIn, portfolio, CV en ligne, GitHub… L'IA les ouvre pour te profiler.</p>
+        </div>
+        <div class="field">
+          <label for="ai-extra">À préciser à l'IA (libre)</label>
+          <textarea id="ai-extra" class="input" rows="2"
+                    placeholder="Ex. : je vise plutôt des PME, j'ai le permis, j'évite les horaires de nuit, mon français est encore hésitant à l'oral…"></textarea>
+        </div>
+      </section>
+
+      <section class="md-block">
+        <h3 class="md-h">2. Ce que tu cherches</h3>
+        <div class="md-grid">
+          <div class="field">
+            <label for="ai-ville">Ville ou zone</label>
+            <input id="ai-ville" class="input" type="text" placeholder="Strasbourg">
+          </div>
+          <div class="field">
+            <label for="ai-rayon">Rayon autour (km)</label>
+            <input id="ai-rayon" class="input" type="number" min="0" max="300" placeholder="30">
+          </div>
+          <div class="field">
+            <label for="ai-salaire">Salaire minimum (€ brut / an)</label>
+            <input id="ai-salaire" class="input" type="text" inputmode="numeric" placeholder="Ex. : 28000">
+          </div>
+          <div class="field">
+            <label for="ai-contrat">Type de contrat</label>
+            <select id="ai-contrat" class="input">
+              <option>Peu importe</option>
+              <option>CDI</option>
+              <option>CDD</option>
+              <option>Alternance</option>
+              <option>Intérim</option>
+              <option>Stage</option>
+              <option>Freelance</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ai-teletravail">Présence sur place</label>
+            <select id="ai-teletravail" class="input">
+              <option>Peu importe</option>
+              <option>Présentiel</option>
+              <option>Hybride</option>
+              <option>Télétravail</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ai-jours">Offres publiées depuis moins de (jours)</label>
+            <input id="ai-jours" class="input" type="number" min="1" max="365" placeholder="30">
+          </div>
+          <div class="field">
+            <label for="ai-max">Nombre maximum d'offres</label>
+            <input id="ai-max" class="input" type="number" min="1" max="50" placeholder="10">
+          </div>
+        </div>
+        <p class="md-hint">
+          Tes types de poste (section 2) et tes candidatures déjà saisies sont ajoutés
+          automatiquement au prompt : l'IA sait quoi chercher et ne te repropose pas ce que tu as déjà.
+        </p>
+      </section>
+
+      <section class="md-block">
+        <h3 class="md-h">3. Le prompt à copier</h3>
+        <div class="row-actions">
+          <button id="ai-gen" class="btn btn--primary btn--sm" type="button">Générer et copier le prompt</button>
+          <button id="ai-copy" class="btn btn--sm" type="button">Copier à nouveau</button>
+          <span id="ai-copy-state" class="count-hint"></span>
+        </div>
+        <textarea id="ai-prompt" class="input ai-code" rows="8" readonly spellcheck="false"
+                  placeholder="Clique sur « Générer » : le prompt apparaît ici, déjà copié."></textarea>
+        <p class="md-hint">
+          Colle-le dans ChatGPT, Claude, Gemini, Perplexity… avec la <strong>recherche web
+          activée</strong> (ou en mode « recherche approfondie » si tu l'as). Sans accès au web,
+          l'IA inventera des offres.
+        </p>
+      </section>
+
+      <section class="md-block">
+        <h3 class="md-h">4. Coller la réponse de l'IA</h3>
+        <textarea id="ai-json" class="input ai-code" rows="5" spellcheck="false"
+                  placeholder='Colle ici le bloc JSON renvoyé par l&apos;IA — { "offres": [ … ] }'></textarea>
+        <div class="row-actions" style="margin-top:10px">
+          <button id="ai-import" class="btn btn--primary btn--sm" type="button">Importer les offres</button>
+        </div>
+        <div id="ai-report" class="ai-report"></div>
+      </section>
+    </div>
   </div>
 </div>
 
