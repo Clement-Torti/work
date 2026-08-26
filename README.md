@@ -206,7 +206,7 @@ arrastrando el marcador; se guarda como `lat`/`lon` en la hoja.
 |---|---|
 | `Profiles` | `id`, `name`, `createdAt` |
 | `JobTypes` | `id`, `profileId`, `position`, `tipo`, `porQue`, `nivelFrances`, `prioridad` |
-| `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion`, `enlace`, `nota`, `misiones`, `sueldo`, `modalidad`, `ventajas`, `ubicacion`, `lat`, `lon`, `notaComentario`, `cartaMotivacion` |
+| `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion`, `enlace`, `nota`, `misiones`, `sueldo`, `modalidad`, `ventajas`, `ubicacion`, `lat`, `lon`, `notaComentario`, `cartaMotivacion`, `contrato` |
 | `Channels` | `id`, `profileId`, `channelKey`, `name`, `url`, `hecho`, `notas` |
 | `Companies` | `id`, `profileId`, `position`, `name`, `description`, `ubicacion`, `lat`, `lon` |
 | `Questions` | `id`, `profileId`, `applicationId`, `position`, `question`, `answered`, `answer` |
@@ -250,13 +250,17 @@ candidaturas; borrar un perfil borra todo lo suyo.
 
    **Chercher avec l'IA** (botón encima de las tablas) abre un formulario: enlaces que
    hablan de ti (LinkedIn, portfolio…), ciudad, radio, salario mínimo, contrato,
-   teletrabajo, antigüedad máxima de las ofertas, cuántas quieres y un campo libre. Con
+   teletrabajo, antigüedad máxima de las ofertas, cuántas quieres y un campo libre. En
+   contrato y teletrabajo se puede **marcar varias opciones** (casillas, no un desplegable):
+   nada marcado significa «me da igual». Con
    eso genera un prompt —al que añade tus tipos de puesto y la lista de lo que ya tienes,
    para que no te lo repita— y lo copia al portapapeles. Pegas la respuesta JSON de la IA
    en el mismo modal y las ofertas entran como candidaturas en estado **«À valider»**,
    con su empresa, sus preguntas probables, lo que la IA ha averiguado y sus contactos.
    Los criterios del formulario se quedan en el `localStorage` del aparato, como la clave
-   de la hoja; las ofertas, en la hoja.
+   de la hoja; las ofertas, en la hoja. El botón **Importer les offres** vive en un pie
+   fijo del modal, fuera de la parte que se desplaza: con el formulario lleno el modal es
+   más alto que la pantalla, y antes el botón quedaba fuera de la vista.
 
    Cada oferta importada se revisa desde su ficha: **Garder** la convierte en una
    candidatura normal, **L'écarter** la pasa al estado «Écartée». Ni «Écartée» ni
@@ -265,7 +269,8 @@ candidaturas; borrar un perfil borra todo lo suyo.
 
    El botón **Fiche** abre la ficha detallada, con un contador de cuántos datos hay
    dentro. La ficha guarda: misiones, fourchette de salaire, modalidad (presencial /
-   híbrido / teletrabajo), el porqué de la nota, ventajas, la lettre de motivation
+   híbrido / teletrabajo), **tipo de contrato** (CDI / CDD / alternancia / interinidad /
+   prácticas / freelance), el porqué de la nota, ventajas, la lettre de motivation
    enviada —**plegada** por defecto, con el número de caracteres en la cabecera, porque
    ocupa toda la pantalla si no—, ubicación con mapa, las preguntas que te hicieron
    en la entrevista (y si supiste responder), lo que aprendiste, y los contactos en la

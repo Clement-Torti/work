@@ -16,6 +16,7 @@ const ROOT = path.join(__dirname, '..');
 const appJs = fs.readFileSync(path.join(ROOT, 'assets/app.js'), 'utf8');
 const css = fs.readFileSync(path.join(ROOT, 'assets/styles.css'), 'utf8');
 const codeGs = fs.readFileSync(path.join(ROOT, 'apps-script/Code.gs'), 'utf8');
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
 let fail = 0;
 const check = (l, c, x) => {
@@ -712,9 +713,9 @@ detectar({ action: 'deleteApplication', payload: { id: 'a1' } }, { removed: true
 check('un borrado no dispara la deteccion', avisos.length === 0, avisos);
 
 // Y el escenario completo contra el simulador, con el esquema de antes.
-const viejoGs = codeGs.replace(
-  "'ubicacion', 'lat', 'lon', 'notaComentario', 'cartaMotivacion'],",
-  "'ubicacion', 'lat', 'lon'],");
+// El esquema de "antes": se recorta todo lo que venga despues de 'lon', asi la
+// prueba sigue valiendo cada vez que se anada una columna.
+const viejoGs = codeGs.replace(/'ubicacion', 'lat', 'lon',[^\]]*\]/, "'ubicacion', 'lat', 'lon']");
 check('el esquema viejo se ha podido reconstruir para la prueba', viejoGs !== codeGs);
 
 const guardar = global.SpreadsheetApp;
@@ -734,7 +735,8 @@ const filaCompleta = { id: 'ap1', profileId: pViejo.id, jobTypeId: 'jt', positio
 const rv = callViejo('upsertApplication', filaCompleta);
 check('la hoja vieja responde ok (de ahi el « Enregistré » enganoso)', rv.ok === true, rv);
 check('y devuelve la fila sin las columnas nuevas',
-  !('notaComentario' in rv.data.row) && !('cartaMotivacion' in rv.data.row));
+  ['notaComentario', 'cartaMotivacion', 'contrato'].every(k => !(k in rv.data.row)),
+  Object.keys(rv.data.row));
 const releido = callViejo('loadProfile', { profileId: pViejo.id }).data.applications[0];
 check('al recargar, el texto ya no esta (el fallo que se ha reportado)',
   !releido.notaComentario && !releido.cartaMotivacion, releido);
@@ -753,6 +755,106 @@ detectar({ action: 'upsertApplication', payload: filaCompleta }, rn.data);
 check('con el Code.gs de este repositorio no se pierde nada', avisos.length === 0, avisos);
 check('y el texto vuelve entero',
   call('loadProfile', { profileId: pNuevo.id }).data.applications[0].cartaMotivacion === 'Madame, Monsieur…');
+
+// ------- 10. type de contrat, choix multiples, et un modal utilisable
+console.log('\n== le type de contrat suit la candidature ==');
+
+const colsApp = (() => {
+  const block = codeGs.slice(codeGs.indexOf('var SCHEMA'), codeGs.indexOf('var CHILDREN'));
+  const line = block.slice(block.indexOf('\n  Applications:'));
+  return [...line.slice(0, line.indexOf('],')).matchAll(/'(\w+)'/g)].map(m => m[1]);
+})();
+check('la hoja tiene su columna, y al final', colsApp[colsApp.length - 1] === 'contrato', colsApp);
+check('la ficha lo pide con una lista cerrada',
+  /fieldBlock\('Type de contrat', selectHtml\(CONTRATS/.test(appJs));
+check('una candidatura nueva lo lleva vacio', /contrato: ''/.test(appJs));
+check('el select se colorea con su propia lista',
+  /AF_LISTS = \{ nota: NOTES, modalidad: MODALITES, contrato: CONTRATS \}/.test(appJs));
+
+// lo que escriba la IA se trae a la lista cerrada
+const CONTRAT_CASOS = [
+  ['CDI', 'CDI'], ['contrat à durée indéterminée', 'CDI'], ['CDD 6 mois', 'CDD'],
+  ['contrat à durée déterminée', 'CDD'], ['alternance', 'Alternance'],
+  ['contrat d’apprentissage', 'Alternance'], ['intérim', 'Intérim'],
+  ['mission d’intérim', 'Intérim'], ['stage de fin d’études', 'Stage'],
+  ['internship', 'Stage'], ['freelance', 'Freelance'], ['portage salarial', 'Freelance'],
+  ['', ''], ['temps plein', '']
+];
+const iaSrc2 = appJs.slice(appJs.indexOf('  // --- IA: funciones puras'),
+                           appJs.indexOf('  // --- fin de las funciones puras de la IA'));
+const IA2 = new Function('ST_A_VALIDER', iaSrc2 +
+  '\nreturn { normContrat: normContrat, buildAiPrompt: buildAiPrompt,' +
+  ' buildImportPayload: buildImportPayload, choices: choices };')('À valider');
+
+const malos = CONTRAT_CASOS.filter(([entra, sale]) => IA2.normContrat(entra) !== sale);
+check('lo que escriba la IA cae en la lista cerrada', malos.length === 0,
+  malos.map(([e, s]) => e + ' -> ' + IA2.normContrat(e) + ' (esperado ' + s + ')'));
+
+const impC = IA2.buildImportPayload(
+  [{ poste: 'Dev', lien: 'https://o/1', contrat: 'CDI', entreprise: { nom: 'Arte' } },
+   { poste: 'Stagiaire', lien: 'https://o/2', contrat: 'stage 6 mois', entreprise: { nom: 'CTS' } }],
+  { profileId: 'P', jobTypes: [{ id: 'j', tipo: 'Dev' }], applications: [], companies: [],
+    today: '2026-08-26', uid: (() => { let n = 0; return () => 'c' + (++n); })() });
+check('el contrato llega a la candidatura importada',
+  impC.payload.applications[0].contrato === 'CDI' &&
+  impC.payload.applications[1].contrato === 'Stage',
+  impC.payload.applications.map(a => a.contrato));
+
+const promptC = IA2.buildAiPrompt(
+  { links: '', extra: '', ville: 'Strasbourg', rayon: '', salaire: '', contrat: '', teletravail: '', jours: '', max: '5' },
+  { jobTypes: [{ tipo: 'Dev' }], applications: [] });
+check('el prompt pide el contrato y lo limita', /"contrat"/.test(promptC) &&
+  /"contrat" : uniquement/.test(promptC));
+check('el ejemplo del prompt sigue siendo JSON valido', (() => {
+  let e = '';
+  promptC.replace(/```(?:json)?\s*([\s\S]*?)```/gi, (_, i2) => { if (i2.trim().length > e.length) e = i2.trim(); return ''; });
+  try { return 'contrat' in JSON.parse(e).offres[0]; } catch (err) { return false; }
+})());
+
+console.log('\n== plusieurs choix pour contrat et présence ==');
+check('contrat es un grupo de casillas, no un select',
+  /id="ai-contrat" class="chips" data-ai-multi/.test(html) &&
+  !/<select id="ai-contrat"/.test(html));
+check('présence también', /id="ai-teletravail" class="chips" data-ai-multi/.test(html) &&
+  !/<select id="ai-teletravail"/.test(html));
+check('las seis clases de contrato estan',
+  ['CDI', 'CDD', 'Alternance', 'Intérim', 'Stage', 'Freelance']
+    .every(v => html.indexOf('value="' + v + '"') > 0));
+check('la pagina sabe que esos dos campos son multiples',
+  /AI_MULTI = \['contrat', 'teletravail'\]/.test(appJs));
+check('se guardan como lista y se releen marcando las casillas',
+  /function aiMultiValue/.test(appJs) && /function setAiMultiValue/.test(appJs) &&
+  /out\.join\(', '\)/.test(appJs));
+check('nada marcado = sin filtro, no «peu importe» escrito a mano',
+  IA2.choices('').length === 0 && IA2.choices('Peu importe').length === 0);
+
+const promptMulti = IA2.buildAiPrompt(
+  { links: '', extra: '', ville: 'Colmar', rayon: '', salaire: '',
+    contrat: 'CDI, Alternance', teletravail: 'Hybride, Télétravail', jours: '', max: '5' },
+  { jobTypes: [{ tipo: 'Dev' }], applications: [] });
+check('el prompt junta las opciones con « ou »',
+  /- Type de contrat : CDI ou Alternance/.test(promptMulti) &&
+  /- Présence sur place : Hybride ou Télétravail/.test(promptMulti),
+  promptMulti.slice(promptMulti.indexOf('## 3'), promptMulti.indexOf('## 4')));
+check('y avisa a la IA de que cualquiera vale',
+  /n’importe lequel des 2/.test(promptMulti) && /l’un ou l’autre/.test(promptMulti));
+
+console.log('\n== el modal se puede usar en una pantalla baja ==');
+check('el boton de importar esta FUERA del cuerpo que scrollea',
+  html.indexOf('id="ai-import"') > html.indexOf('class="modal-foot"'),
+  { import: html.indexOf('id="ai-import"'), foot: html.indexOf('class="modal-foot"') });
+check('el pie esta dentro del panel, hermano del cuerpo',
+  /<\/div>\s*<!--[\s\S]*?-->\s*<footer class="modal-foot">/.test(html));
+
+const rFoot = (() => { const i = css.indexOf('\n.modal-foot {'); return i < 0 ? '' : css.slice(i, css.indexOf('}', i)); })();
+check('el pie no se encoge ni scrollea', /flex:\s*none/.test(rFoot), rFoot);
+check('el modal mide el alto visible de verdad (dvh) en el movil',
+  /@supports \(height: 100dvh\)[\s\S]{0,80}\.modal \{ height: 100dvh/.test(css));
+check('el prompt y el JSON no se comen la pantalla',
+  /max-height:\s*38vh/.test(css));
+// app.js es ASCII puro: los acentos viven como \uXXXX.
+check('el pie dice cuantas ofertas hay pegadas antes de importar',
+  /function updateAiFootHint/.test(appJs) && /offres d\\u00e9tect\\u00e9es/.test(appJs));
 
 console.log('\n' + (fail ? fail + ' PRUEBA(S) FALLIDA(S)' : 'Contrato: ninguna prueba falla.'));
 process.exit(fail ? 1 : 0);

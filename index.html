@@ -276,25 +276,25 @@
             <input id="ai-salaire" class="input" type="text" inputmode="numeric" placeholder="Ex. : 28000">
           </div>
           <div class="field">
-            <label for="ai-contrat">Type de contrat</label>
-            <select id="ai-contrat" class="input">
-              <option>Peu importe</option>
-              <option>CDI</option>
-              <option>CDD</option>
-              <option>Alternance</option>
-              <option>Intérim</option>
-              <option>Stage</option>
-              <option>Freelance</option>
-            </select>
+            <label>Type de contrat</label>
+            <div id="ai-contrat" class="chips" data-ai-multi role="group" aria-label="Type de contrat">
+              <label class="chip"><input type="checkbox" value="CDI"><span>CDI</span></label>
+              <label class="chip"><input type="checkbox" value="CDD"><span>CDD</span></label>
+              <label class="chip"><input type="checkbox" value="Alternance"><span>Alternance</span></label>
+              <label class="chip"><input type="checkbox" value="Intérim"><span>Intérim</span></label>
+              <label class="chip"><input type="checkbox" value="Stage"><span>Stage</span></label>
+              <label class="chip"><input type="checkbox" value="Freelance"><span>Freelance</span></label>
+            </div>
+            <p class="hint">Coche ce qui te va. Rien de coché = peu importe.</p>
           </div>
           <div class="field">
-            <label for="ai-teletravail">Présence sur place</label>
-            <select id="ai-teletravail" class="input">
-              <option>Peu importe</option>
-              <option>Présentiel</option>
-              <option>Hybride</option>
-              <option>Télétravail</option>
-            </select>
+            <label>Présence sur place</label>
+            <div id="ai-teletravail" class="chips" data-ai-multi role="group" aria-label="Présence sur place">
+              <label class="chip"><input type="checkbox" value="Présentiel"><span>Présentiel</span></label>
+              <label class="chip"><input type="checkbox" value="Hybride"><span>Hybride</span></label>
+              <label class="chip"><input type="checkbox" value="Télétravail"><span>Télétravail</span></label>
+            </div>
+            <p class="hint">Plusieurs choix possibles.</p>
           </div>
           <div class="field">
             <label for="ai-jours">Offres publiées depuis moins de (jours)</label>
@@ -331,12 +331,18 @@
         <h3 class="md-h">4. Coller la réponse de l'IA</h3>
         <textarea id="ai-json" class="input ai-code" rows="5" spellcheck="false"
                   placeholder='Colle ici le bloc JSON renvoyé par l&apos;IA — { "offres": [ … ] }'></textarea>
-        <div class="row-actions" style="margin-top:10px">
-          <button id="ai-import" class="btn btn--primary btn--sm" type="button">Importer les offres</button>
-        </div>
         <div id="ai-report" class="ai-report"></div>
       </section>
     </div>
+
+    <!-- Hors du corps qui défile : le bouton reste visible quelle que soit la
+         hauteur du contenu et la barre d'adresse du téléphone. -->
+    <footer class="modal-foot">
+      <button class="btn btn--sm" type="button" data-close-ai>Fermer</button>
+      <span class="modal-foot-spacer"></span>
+      <span id="ai-foot-hint" class="count-hint"></span>
+      <button id="ai-import" class="btn btn--primary btn--sm" type="button">Importer les offres</button>
+    </footer>
   </div>
 </div>
 

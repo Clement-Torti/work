@@ -129,6 +129,16 @@
   var STATUTS_ENVOYES = ['Envoy\u00e9e', 'Relance faite', 'R\u00e9ponse re\u00e7ue', 'Entretien',
                          'Accept\u00e9e', 'Sans r\u00e9ponse', 'Refus\u00e9e'];
 
+  var CONTRATS = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'CDI', label: 'CDI', tone: 'good' },
+    { value: 'CDD', label: 'CDD', tone: 'mid' },
+    { value: 'Alternance', label: 'Alternance', tone: 'mid' },
+    { value: 'Int\u00e9rim', label: 'Int\u00e9rim', tone: 'mid' },
+    { value: 'Stage', label: 'Stage', tone: 'low' },
+    { value: 'Freelance', label: 'Freelance', tone: 'mid' }
+  ];
+
   var MODALITES = [
     { value: '', label: '\u2014', tone: 'todo' },
     { value: 'Pr\u00e9sentiel', label: 'Pr\u00e9sentiel', tone: 'mid' },
@@ -1346,7 +1356,8 @@
       position: nextPosition(mine),
       fecha: today(), empresa: '', puesto: '', fuente: '', estado: '', proximaAccion: '',
       enlace: '', nota: '', misiones: '', sueldo: '', modalidad: '', ventajas: '',
-      ubicacion: '', lat: '', lon: '', notaComentario: '', cartaMotivacion: ''
+      ubicacion: '', lat: '', lon: '', notaComentario: '', cartaMotivacion: '',
+      contrato: ''
     };
     state.applications.push(row);
     enqueue('app:' + row.id, 'upsertApplication', row);
@@ -1554,6 +1565,9 @@
   //  Fiche detaillee
   // =====================================================================
 
+  /** Que lista colorea cada select de la ficha. */
+  var AF_LISTS = { nota: NOTES, modalidad: MODALITES, contrato: CONTRATS };
+
   function fieldBlock(label, control) {
     return '<div class="field"><label>' + esc(label) + '</label>' + control + '</div>';
   }
@@ -1634,6 +1648,7 @@
         '<div class="md-grid">' +
           fieldBlock('Fourchette de salaire', '<input class="input" data-af="sueldo" value="' + esc(app.sueldo) +
             '" placeholder="Ex. : 32-38 k\u20ac brut">') +
+          fieldBlock('Type de contrat', selectHtml(CONTRATS, app.contrato, 'contrato', ' data-af-sel="contrato"')) +
           fieldBlock('Modalit\u00e9', selectHtml(MODALITES, app.modalidad, 'modalidad', ' data-af-sel="modalidad"')) +
           fieldBlock('Note globale', selectHtml(NOTES, app.nota, 'nota', ' data-af-sel="nota"')) +
           fieldBlock('Lien de l\u2019offre', '<input class="input" data-af="enlace" value="' + esc(app.enlace) +
@@ -1786,7 +1801,7 @@
       var app = byId(state.applications, openAppId);
       if (!app) return;
       app[af] = e.target.value;
-      e.target.setAttribute('data-tone', toneOf(af === 'nota' ? NOTES : MODALITES, e.target.value));
+      e.target.setAttribute('data-tone', toneOf(AF_LISTS[af] || MODALITES, e.target.value));
       enqueue('app:' + app.id, 'upsertApplication', app);
       return;
     }
@@ -2070,10 +2085,36 @@
   var AI_FIELDS = ['links', 'extra', 'ville', 'rayon', 'salaire', 'contrat',
                    'teletravail', 'jours', 'max'];
 
+  /** Estos dos son casillas: varias respuestas, guardadas separadas por comas. */
+  var AI_MULTI = ['contrat', 'teletravail'];
+
   var AI_DEFAULTS = {
     links: '', extra: '', ville: 'Strasbourg', rayon: '30', salaire: '',
-    contrat: 'Peu importe', teletravail: 'Peu importe', jours: '30', max: '10'
+    contrat: '', teletravail: '', jours: '30', max: '10'
   };
+
+  function isAiMulti(field) { return AI_MULTI.indexOf(field) >= 0; }
+
+  /** Lee/escribe un grupo de casillas como una lista en texto. */
+  function aiMultiValue(field) {
+    var out = [];
+    var boxes = $('ai-' + field).querySelectorAll('input[type="checkbox"]');
+    Array.prototype.forEach.call(boxes, function (b) {
+      if (b.checked) out.push(b.value);
+    });
+    return out.join(', ');
+  }
+
+  function setAiMultiValue(field, value) {
+    var wanted = String(value || '').split(',').map(function (v) {
+      return normKey(v);
+    }).filter(Boolean);
+    var boxes = $('ai-' + field).querySelectorAll('input[type="checkbox"]');
+    Array.prototype.forEach.call(boxes, function (b) {
+      b.checked = wanted.indexOf(normKey(b.value)) >= 0;
+      b.closest('.chip').classList.toggle('is-on', b.checked);
+    });
+  }
 
   /** Los criterios se quedan en el aparato, como la clave de la hoja. */
   function aiPrefsKey() { return 'estrasburgo.aiSearch.' + state.profileId; }
@@ -2092,7 +2133,9 @@
 
   function formAiPrefs() {
     var out = {};
-    AI_FIELDS.forEach(function (f) { out[f] = $('ai-' + f).value; });
+    AI_FIELDS.forEach(function (f) {
+      out[f] = isAiMulti(f) ? aiMultiValue(f) : $('ai-' + f).value;
+    });
     return out;
   }
 
@@ -2121,6 +2164,22 @@
 
   function arr(v) {
     return Object.prototype.toString.call(v) === '[object Array]' ? v : (v ? [v] : []);
+  }
+
+  /** Igual con el tipo de contrato: la IA lo escribe como quiere. */
+  function normContrat(value) {
+    var v = normKey(value);
+    if (!v) return '';
+    if (v.indexOf('cdi') >= 0 || v.indexOf('indetermin') >= 0) return 'CDI';
+    if (v.indexOf('altern') >= 0 || v.indexOf('apprenti') >= 0 ||
+        v.indexOf('professionnalisation') >= 0) return 'Alternance';
+    if (v.indexOf('interim') >= 0 || v.indexOf('mission') >= 0 ||
+        v.indexOf('temporaire') >= 0) return 'Int\u00e9rim';
+    if (v.indexOf('stage') >= 0 || v.indexOf('intern') >= 0) return 'Stage';
+    if (v.indexOf('freelance') >= 0 || v.indexOf('independant') >= 0 ||
+        v.indexOf('portage') >= 0) return 'Freelance';
+    if (v.indexOf('cdd') >= 0 || v.indexOf('determin') >= 0) return 'CDD';
+    return '';
   }
 
   /** La IA escribe la modalidad a su manera: la traemos a la lista cerrada. */
@@ -2162,6 +2221,15 @@
    * de puesto, sus criterios, lo que ya tiene apuntado (para que no se lo
    * proponga otra vez) y el formato exacto de la respuesta.
    */
+  /** Una lista escrita con comas -> sus valores. \u00abPeu importe\u00bb = sin filtro. */
+  function choices(value) {
+    return String(value == null ? '' : value).split(',').map(function (v) {
+      return v.trim();
+    }).filter(function (v) {
+      return v && normKey(v) !== 'peu importe';
+    });
+  }
+
   function buildAiPrompt(prefs, ctx) {
     var links = String(prefs.links || '').split(/[\n,;]+/).map(function (l) {
       return l.trim();
@@ -2206,11 +2274,15 @@
     L.push('- Lieu : ' + (txt(prefs.ville) || 'Strasbourg') +
       (txt(prefs.rayon) ? ', dans un rayon d\u2019environ ' + txt(prefs.rayon) + ' km' : ''));
     if (txt(prefs.salaire)) L.push('- Salaire minimum : ' + txt(prefs.salaire) + ' \u20ac brut par an');
-    if (txt(prefs.contrat) && normKey(prefs.contrat) !== 'peu importe') {
-      L.push('- Type de contrat : ' + txt(prefs.contrat));
+    var contrats = choices(prefs.contrat);
+    if (contrats.length) {
+      L.push('- Type de contrat : ' + contrats.join(' ou ') +
+        (contrats.length > 1 ? ' (n\u2019importe lequel des ' + contrats.length + ')' : ''));
     }
-    if (txt(prefs.teletravail) && normKey(prefs.teletravail) !== 'peu importe') {
-      L.push('- Pr\u00e9sence sur place : ' + txt(prefs.teletravail));
+    var presences = choices(prefs.teletravail);
+    if (presences.length) {
+      L.push('- Pr\u00e9sence sur place : ' + presences.join(' ou ') +
+        (presences.length > 1 ? ' (l\u2019un ou l\u2019autre)' : ''));
     }
     if (txt(prefs.jours)) L.push('- Offres publi\u00e9es depuis moins de ' + txt(prefs.jours) + ' jours');
     L.push('- Nombre maximum d\u2019offres \u00e0 me retourner : ' + maxOffres);
@@ -2253,6 +2325,7 @@
     L.push('      "lien": "https://url-directe-de-l-offre",');
     L.push('      "source": "plateforme o\u00f9 tu l\u2019as trouv\u00e9e",');
     L.push('      "datePublication": "AAAA-MM-JJ",');
+    L.push('      "contrat": "CDI, CDD, Alternance, Int\u00e9rim, Stage ou Freelance",');
     L.push('      "salaire": "tel qu\u2019affich\u00e9 dans l\u2019offre, sinon vide",');
     L.push('      "modalite": "Pr\u00e9sentiel ou Hybride ou T\u00e9l\u00e9travail, sinon vide",');
     L.push('      "missions": "ce que le poste demande, en 2 ou 3 phrases",');
@@ -2281,6 +2354,8 @@
     L.push('- "lien" est obligatoire : une offre sans URL v\u00e9rifiable ne va pas dans la liste.');
     L.push('- "typeDePoste" doit reprendre au caract\u00e8re pr\u00e8s un des libell\u00e9s de la section 2.');
     L.push('- "modalite" : uniquement "Pr\u00e9sentiel", "Hybride", "T\u00e9l\u00e9travail" ou "".');
+    L.push('- "contrat" : uniquement "CDI", "CDD", "Alternance", "Int\u00e9rim", "Stage",');
+    L.push('  "Freelance" ou "".');
     L.push('- "lat"/"lon" : coordonn\u00e9es d\u00e9cimales en texte ("48.5734"), sinon "".');
     L.push('- ' + maxOffres + ' offres au maximum, les plus pertinentes d\u2019abord, sans doublon');
     L.push('  entre elles ni avec la section 5.');
@@ -2436,7 +2511,8 @@
         sueldo: txt(o.salaire), modalidad: normModalite(o.modalite),
         ventajas: txt(o.avantages), ubicacion: txt(o.adresse || o.lieu),
         lat: normCoord(o.lat), lon: normCoord(o.lon),
-        notaComentario: txt(o.pourquoiCetteNote), cartaMotivacion: ''
+        notaComentario: txt(o.pourquoiCetteNote), cartaMotivacion: '',
+        contrato: normContrat(o.contrat || o.typeDeContrat)
       });
 
       arr(o.questionsProbables || o.questions).forEach(function (q, k) {
@@ -2494,10 +2570,14 @@
 
   function openAiModal() {
     var prefs = readAiPrefs();
-    AI_FIELDS.forEach(function (f) { $('ai-' + f).value = prefs[f]; });
+    AI_FIELDS.forEach(function (f) {
+      if (isAiMulti(f)) setAiMultiValue(f, prefs[f]);
+      else $('ai-' + f).value = prefs[f];
+    });
     $('ai-prompt').value = '';
     $('ai-report').innerHTML = '';
     $('ai-copy-state').textContent = '';
+    $('ai-foot-hint').textContent = '';
     hideBanner('ai-error');
 
     var sinTipos = !state.jobTypes.length;
@@ -2551,13 +2631,20 @@
       return;
     }
 
-    if (e.target.id === 'ai-import') importAiOffers();
+    if (e.target.id === 'ai-import') return importAiOffers();
+
+    if (e.target.type === 'checkbox') {
+      var group = e.target.closest('[data-ai-multi]');
+      if (!group) return;
+      e.target.closest('.chip').classList.toggle('is-on', e.target.checked);
+      saveAiPrefs();
+    }
   });
 
   $('ai-modal').addEventListener('input', function (e) {
     // ai-json y ai-prompt tienen su propio scroll: no crecen solos.
     if (e.target.id === 'ai-links' || e.target.id === 'ai-extra') autoGrow(e.target);
-    if (e.target.id === 'ai-json') return;
+    if (e.target.id === 'ai-json') return updateAiFootHint();
     if (String(e.target.id).indexOf('ai-') === 0) saveAiPrefs();
   });
   $('ai-modal').addEventListener('change', saveAiPrefs);
@@ -2565,6 +2652,16 @@
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && !$('ai-modal').hidden) closeAiModal();
   });
+
+  /** Lo que se ve en el pie: cuantas ofertas hay pegadas, antes de importar. */
+  function updateAiFootHint() {
+    var raw = $('ai-json').value;
+    if (!String(raw).trim()) return ($('ai-foot-hint').textContent = '');
+    var parsed = parseAiOffers(raw);
+    $('ai-foot-hint').textContent = parsed.error
+      ? 'JSON pas encore lisible'
+      : parsed.offers.length + (parsed.offers.length === 1 ? ' offre d\u00e9tect\u00e9e' : ' offres d\u00e9tect\u00e9es');
+  }
 
   /** Del JSON pegado a la hoja, en una sola peticion. */
   function importAiOffers() {
@@ -2601,6 +2698,8 @@
       renderTracking();
       renderAllQuestions();
       $('ai-json').value = '';
+      $('ai-foot-hint').textContent = rep.kept.length +
+        (rep.kept.length === 1 ? ' offre import\u00e9e' : ' offres import\u00e9es');
       $('ai-report').innerHTML = aiReportHtml(rep, true);
       setSaveState('saved');
     }).catch(function (err) {

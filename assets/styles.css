@@ -858,6 +858,13 @@ body.modal-open { overflow: hidden; }
   overflow: hidden;
 }
 
+/* En el móvil, inset:0 mide el viewport de maquetación, que es más alto que lo
+   que se ve cuando está la barra de direcciones: el final del panel quedaba
+   debajo del navegador. dvh mide lo que se ve de verdad. */
+@supports (height: 100dvh) {
+  .modal { height: 100dvh; }
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -928,6 +935,19 @@ body.modal-open { overflow: hidden; }
   padding: 4px 24px 26px;
 }
 
+/* Pie fijo : ne défile pas avec le corps, donc son bouton reste atteignable */
+.modal-foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--line);
+  background: #FBFCFC;
+}
+.modal-foot-spacer { flex: 1 1 auto; }
+
 .md-block { padding: 18px 0; border-bottom: 1px solid var(--line); }
 .md-block:last-child { border-bottom: 0; padding-bottom: 4px; }
 
@@ -986,6 +1006,32 @@ body.modal-open { overflow: hidden; }
 .md-verdict strong { color: var(--violet); }
 .md-verdict--off strong { color: var(--ink-soft); }
 
+/* Cases à cocher en ligne : plusieurs réponses possibles */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-soft);
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.chip:hover { border-color: var(--teal-line); background: var(--teal-soft); }
+.chip input { margin: 0; accent-color: var(--teal); cursor: pointer; }
+.chip.is-on {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-weight: 700;
+}
+.chip:focus-within { outline: 2px solid var(--teal); outline-offset: 2px; }
+
 /* Le prompt et le JSON: du texte technique, en monospace */
 .ai-code {
   display: block;
@@ -996,8 +1042,8 @@ body.modal-open { overflow: hidden; }
   white-space: pre;
   overflow-x: auto;
   resize: vertical;
-  min-height: 150px;
-  max-height: 45vh;
+  min-height: 120px;
+  max-height: 38vh;
 }
 #ai-prompt { background: #FBFCFC; color: var(--ink-soft); }
 
