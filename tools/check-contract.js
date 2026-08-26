@@ -191,5 +191,89 @@ check('la regla del resalte existe', !!rHl, rHl);
 check('no usa transform', !/transform:/.test(rHl || ''), rHl);
 check('usa filter', /filter:/.test(rHl || ''), rHl);
 
+// ------------------------- 6. seccion 4: preguntas agrupadas y plegadas
+// Se piden dos cosas concretas: un grupo por empresa y todos cerrados al
+// entrar. Las pruebas sacan renderAllQuestions del propio app.js y la corren
+// con stubs, asi que comprueban el HTML de verdad.
+console.log('\n== las questions van agrupadas por empresa y plegadas ==');
+
+function renderQuestions(state, openQGroups) {
+  const i = appJs.indexOf('  function renderAllQuestions()');
+  const j = appJs.indexOf('\n  }\n', appJs.indexOf('autoGrowAll(box);', i));
+  const body = appJs.slice(i, j + 4);
+  const box = { innerHTML: '', querySelector: () => null };
+  const env = {
+    state, openQGroups,
+    ORPHAN_Q: '__sans-candidature__',
+    REPONDU: [],
+    $: () => box,
+    esc: (x) => String(x == null ? '' : x).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+    byId: (a, id) => a.find(x => x.id === id) || null,
+    selectHtml: (o, v) => '<select>' + v + '</select>',
+    appLabel: (a) => !a ? '—' : (a.empresa || a.puesto || 'Candidature sans nom'),
+    autoGrowAll: () => {}
+  };
+  const keys = Object.keys(env);
+  new Function(...keys, body + '\nrenderAllQuestions();')(...keys.map(k => env[k]));
+  return box.innerHTML;
+}
+
+const qState = {
+  applications: [
+    { id: 'a1', empresa: 'Ubisoft', puesto: 'Dev web' },
+    { id: 'a2', empresa: 'Arte', puesto: '' },
+    { id: 'a3', empresa: 'Sin preguntas', puesto: '' }
+  ],
+  questions: [
+    { id: 'q1', applicationId: 'a2', position: 20, question: 'Pourquoi nous ?', answered: 'oui', answer: '' },
+    { id: 'q2', applicationId: 'a1', position: 10, question: 'Vos faiblesses ?', answered: 'non', answer: '' },
+    { id: 'q3', applicationId: 'a1', position: 20, question: 'Salaire ?', answered: '', answer: '' },
+    { id: 'q4', applicationId: 'a2', position: 10, question: 'Dispo ?', answered: 'oui', answer: '' },
+    { id: 'q5', applicationId: 'borrada', position: 10, question: 'Vieja', answered: '', answer: '' }
+  ]
+};
+
+let qh = renderQuestions(qState, {});
+const grupos = [...qh.matchAll(/data-qgroup="([^"]+)"([^>]*)>\s*<summary[^>]*>(.*?)<\/summary>/gs)];
+
+check('un grupo por candidatura con preguntas, mas el de las huerfanas',
+  grupos.length === 3, grupos.map(g => g[1]));
+check('sin grupo para la candidatura sin preguntas', !qh.includes('data-qgroup="a3"'));
+check('siguen el orden de las candidaturas',
+  grupos.map(g => g[1]).join(',') === 'a1,a2,__sans-candidature__', grupos.map(g => g[1]));
+check('TODOS cerrados al entrar', grupos.every(g => !/\bopen\b/.test(g[2])),
+  grupos.map(g => g[1] + g[2]));
+check('el titulo del grupo es la empresa', /Ubisoft/.test(grupos[0][3]) && /Arte/.test(grupos[1][3]));
+check('la cabecera cuenta las preguntas y las que faltan por responder',
+  /2 questions/.test(grupos[0][3]) && /2 à revoir/.test(grupos[0][3]), grupos[0][3]);
+check('sin "à revoir" cuando estan todas respondidas', !/revoir/.test(grupos[1][3]), grupos[1][3]);
+check('las preguntas de una candidatura borrada no se pierden',
+  /Candidature supprim/.test(grupos[2][3]) && qh.includes('Vieja'));
+check('la columna Entreprise ya no hace falta dentro del grupo', !qh.includes('>Entreprise<'));
+check('cada pregunta cae en su grupo',
+  qh.slice(qh.indexOf('data-qgroup="a1"'), qh.indexOf('data-qgroup="a2"')).includes('Salaire'));
+check('ordenadas por position dentro del grupo',
+  qh.indexOf('Vos faiblesses') < qh.indexOf('Salaire') && qh.indexOf('Dispo') < qh.indexOf('Pourquoi nous'));
+check('el total sigue al pie', /5 questions au total/.test(qh));
+check('hay boton para desplegarlos todos', /data-q-toggle-all/.test(qh));
+check('HTML equilibrado',
+  (qh.match(/<details/g) || []).length === (qh.match(/<\/details>/g) || []).length &&
+  (qh.match(/<tr[ >]/g) || []).length === (qh.match(/<\/tr>/g) || []).length);
+
+// Un grupo abierto tiene que seguir abierto tras repintar: pasa en cada
+// borrado de pregunta y al cerrar la ficha.
+qh = renderQuestions(qState, { a2: true });
+const g2 = [...qh.matchAll(/data-qgroup="([^"]+)"([^>]*)>/g)];
+check('lo que el usuario abrio sigue abierto tras repintar',
+  /\bopen\b/.test(g2.find(g => g[1] === 'a2')[2]) &&
+  !/\bopen\b/.test(g2.find(g => g[1] === 'a1')[2]), g2.map(g => g[1] + g[2]));
+check('el boton pasa a "Tout replier" cuando ya hay alguno abierto',
+  /Tout replier/.test(qh) && !/Tout déplier/.test(qh));
+
+console.log('\n== en papel los grupos cerrados se abren ==');
+const rPrint = css.slice(css.indexOf('@media print'));
+check('la regla de impresion existe', /\.qgroup:not\(\[open\]\)/.test(rPrint), rPrint);
+
 console.log('\n' + (fail ? fail + ' PRUEBA(S) FALLIDA(S)' : 'Contrato: ninguna prueba falla.'));
 process.exit(fail ? 1 : 0);

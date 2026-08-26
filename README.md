@@ -223,8 +223,11 @@ candidaturas; borrar un perfil borra todo lo suyo.
    La columna **Entreprise** es un campo de texto libre con autocompletado (`<datalist>`)
    de las empresas de la sección 3.
 5. **Preguntas de entrevista** — todas las preguntas de todas las entrevistas juntas,
-   con la respuesta que conviene dar si te la vuelven a hacer. Se edita indistintamente
-   desde aquí o desde la ficha; el nombre de la empresa es un enlace que abre su ficha.
+   con la respuesta que conviene dar si te la vuelven a hacer. Como acaban siendo
+   muchas, van **agrupadas por empresa y plegadas**: cada cabecera lleva el nombre de la
+   empresa, el puesto, cuántas preguntas hay y cuántas quedan por responder, más un
+   botón *Fiche*. Un botón *Tout déplier* las abre todas de golpe, y al imprimir se
+   abren solas. Se edita indistintamente desde aquí o desde la ficha.
 
 En pantalla pequeña las tablas se convierten en tarjetas apiladas con el nombre de cada
 columna encima, para no tener que hacer scroll horizontal.
