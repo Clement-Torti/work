@@ -539,6 +539,13 @@ textarea.cell-input { display: block; resize: vertical; min-height: 42px; }
 }
 .banner .btn { margin-left: auto; }
 
+/* Avertissement, pas erreur : la page marche, mais quelque chose est à faire */
+.banner--warn {
+  border-color: #E8D9AE;
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
 /* -------------------------------------------------- conexión y perfiles */
 
 .field { margin-bottom: 16px; }

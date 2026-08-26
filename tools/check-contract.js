@@ -649,5 +649,110 @@ const rFoldHead = (() => {
 check('la cabecera del pliegue esconde el marcador del navegador',
   /list-style:\s*none/.test(rFoldHead), rFoldHead);
 
+// ---------- 9. nada de lo que se escribe se puede perder en silencio
+// Existe por un fallo real y desagradable: al anadir las columnas
+// notaComentario y cartaMotivacion, una hoja con el Code.gs anterior aun
+// desplegado respondia "ok", tiraba esos dos campos y la pagina decia
+// "Enregistré". El texto desaparecia al recargar, sin un solo aviso.
+console.log('\n== todo campo editable se guarda solo ==');
+
+const HOOKS = ['data-field', 'data-cfield', 'data-cofield', 'data-af', 'data-af-sel',
+               'data-mq', 'data-mq-sel', 'data-ml', 'data-mc', 'data-qfield', 'data-qsel'];
+
+const controles = [...appJs.matchAll(/<(input|textarea|select)\b[^>]*/g)]
+  .map(m => m[0])
+  .filter(t => !/type="(button|submit)"/.test(t));
+
+const sinHook = controles.filter(t => !HOOKS.some(h => t.indexOf(h + '=') >= 0));
+// md-address es la excepcion: se guarda por su propio listener, no por data-*.
+const excepciones = sinHook.filter(t => t.indexOf('id="md-address"') >= 0);
+check('ningun campo pintado sin engancharse al guardado',
+  sinHook.length === excepciones.length,
+  sinHook.filter(t => t.indexOf('id="md-address"') < 0).map(t => t.slice(0, 70)));
+check('la direccion de la ficha se guarda al teclear (no solo con «Chercher»)',
+  /\$\('md-address'\)\.addEventListener\('input'[\s\S]{0,260}enqueue\('app:'/.test(appJs));
+check('los cuatro grupos de campos de la ficha tienen su listener',
+  ['data-af', 'data-mq', 'data-ml', 'data-mc'].every(h =>
+    appJs.indexOf("getAttribute('" + h + "')") > 0));
+
+console.log('\n== una hoja con un Code.gs viejo se detecta y se avisa ==');
+
+// La deteccion, sacada de app.js y ejercitada con un espia.
+const detSrc = appJs.slice(appJs.indexOf('  var droppedWarned = {};'),
+  appJs.indexOf('\n  }\n', appJs.indexOf('  function warnIfFieldsDropped(')) + 4);
+let avisos = [];
+const detectar = new Function('showBanner',
+  detSrc + '\nreturn warnIfFieldsDropped;')((id, msg) => avisos.push({ id: id, msg: msg }));
+
+// Lo que responderia la hoja vieja: ok, pero sin las dos columnas nuevas.
+const enviado = { id: 'a1', empresa: 'Arte', notaComentario: 'Bien payé mais stressant',
+  cartaMotivacion: 'Madame, Monsieur…' };
+const devueltoViejo = { id: 'a1', empresa: 'Arte' };
+detectar({ action: 'upsertApplication', payload: enviado }, { row: devueltoViejo });
+check('avisa, y en su propio banner', avisos.length === 1 && avisos[0].id === 'stale-backend', avisos);
+check('nombra los dos campos perdidos',
+  /notaComentario/.test(avisos[0].msg) && /cartaMotivacion/.test(avisos[0].msg));
+check('dice exactamente que hacer, incluido lo que no basta',
+  /Nouvelle version/.test(avisos[0].msg) && /ne suffit pas/.test(avisos[0].msg), avisos[0].msg);
+check('tranquiliza sobre el resto', /reste de tes données/.test(avisos[0].msg));
+
+avisos = [];
+detectar({ action: 'upsertApplication', payload: enviado },
+  { row: { id: 'a1', empresa: 'Arte', notaComentario: 'Bien payé mais stressant',
+           cartaMotivacion: 'Madame, Monsieur…' } });
+check('con la hoja al dia, ni un aviso', avisos.length === 0, avisos);
+
+avisos = [];
+detectar({ action: 'upsertApplication', payload: { id: 'a1', notaComentario: '   ' } },
+  { row: { id: 'a1' } });
+check('un campo vacio no molesta a nadie', avisos.length === 0, avisos);
+
+avisos = [];
+detectar({ action: 'deleteApplication', payload: { id: 'a1' } }, { removed: true });
+check('un borrado no dispara la deteccion', avisos.length === 0, avisos);
+
+// Y el escenario completo contra el simulador, con el esquema de antes.
+const viejoGs = codeGs.replace(
+  "'ubicacion', 'lat', 'lon', 'notaComentario', 'cartaMotivacion'],",
+  "'ubicacion', 'lat', 'lon'],");
+check('el esquema viejo se ha podido reconstruir para la prueba', viejoGs !== codeGs);
+
+const guardar = global.SpreadsheetApp;
+const hojasViejas = new Map();
+global.SpreadsheetApp = { getActiveSpreadsheet: () => ({
+  getName: () => 'Vieja', getSheetByName: (n) => hojasViejas.get(n) || null,
+  insertSheet: (n) => { const sh = makeSheet(); hojasViejas.set(n, sh); return sh; } }) };
+const postViejo = new Function(viejoGs + '\nreturn doPost;')();
+const callViejo = (a, p) => JSON.parse(postViejo({ postData: { contents: JSON.stringify({ action: a, payload: p }) } })._t);
+
+const pViejo = callViejo('createProfile', { name: 'Antes' }).data.profile;
+const filaCompleta = { id: 'ap1', profileId: pViejo.id, jobTypeId: 'jt', position: 10,
+  fecha: '2026-08-26', empresa: 'Arte', puesto: 'Dev', fuente: '', estado: '',
+  proximaAccion: '', enlace: '', nota: '8', misiones: '', sueldo: '', modalidad: '',
+  ventajas: '', ubicacion: '', lat: '', lon: '',
+  notaComentario: 'Bien payé mais stressant', cartaMotivacion: 'Madame, Monsieur…' };
+const rv = callViejo('upsertApplication', filaCompleta);
+check('la hoja vieja responde ok (de ahi el « Enregistré » enganoso)', rv.ok === true, rv);
+check('y devuelve la fila sin las columnas nuevas',
+  !('notaComentario' in rv.data.row) && !('cartaMotivacion' in rv.data.row));
+const releido = callViejo('loadProfile', { profileId: pViejo.id }).data.applications[0];
+check('al recargar, el texto ya no esta (el fallo que se ha reportado)',
+  !releido.notaComentario && !releido.cartaMotivacion, releido);
+check('lo demas si estaba guardado', releido.nota === '8' && releido.empresa === 'Arte');
+
+avisos = [];
+detectar({ action: 'upsertApplication', payload: filaCompleta }, rv.data);
+check('la pagina lo habria dicho en vez de callarse', avisos.length === 1, avisos);
+global.SpreadsheetApp = guardar;
+
+// Con el Code.gs del repositorio, el mismo envio no pierde nada.
+const pNuevo = call('createProfile', { name: 'Ahora' }).data.profile;
+const rn = call('upsertApplication', Object.assign({}, filaCompleta, { profileId: pNuevo.id }));
+avisos = [];
+detectar({ action: 'upsertApplication', payload: filaCompleta }, rn.data);
+check('con el Code.gs de este repositorio no se pierde nada', avisos.length === 0, avisos);
+check('y el texto vuelve entero',
+  call('loadProfile', { profileId: pNuevo.id }).data.applications[0].cartaMotivacion === 'Madame, Monsieur…');
+
 console.log('\n' + (fail ? fail + ' PRUEBA(S) FALLIDA(S)' : 'Contrato: ninguna prueba falla.'));
 process.exit(fail ? 1 : 0);

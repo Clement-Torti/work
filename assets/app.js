@@ -317,7 +317,8 @@
     var key = queue.keys().next().value;
     var op = queue.get(key);
 
-    api(op.action, op.payload).then(function () {
+    api(op.action, op.payload).then(function (data) {
+      warnIfFieldsDropped(op, data);
       // Solo se descarta si nadie la ha reemplazado mientras viajaba.
       if (queue.get(key) === op) queue.delete(key);
       retries = 0;
@@ -333,6 +334,31 @@
       clearTimeout(flushTimer);
       flushTimer = setTimeout(flush, Math.min(RETRY_BASE * retries, 20000));
     });
+  }
+
+  /**
+   * Detecta una hoja que sigue corriendo con un Code.gs anterior a esta
+   * pagina: la fila que devuelve no lleva las columnas que aun no existen
+   * alli, asi que lo que hemos escrito en esos campos se ha perdido. Pasaba
+   * en silencio -la peticion responde ok- y con el indicador en \u00abEnregistr\u00e9\u00bb.
+   */
+  var droppedWarned = {};
+
+  function warnIfFieldsDropped(op, data) {
+    if (!data || !data.row || op.action.indexOf('upsert') !== 0) return;
+
+    var lost = Object.keys(op.payload).filter(function (k) {
+      var v = op.payload[k];
+      return !(k in data.row) && String(v == null ? '' : v).trim() !== '';
+    });
+    if (!lost.length) return;
+
+    lost.forEach(function (k) { droppedWarned[k] = true; });
+    showBanner('stale-backend', 'Ta feuille n\u2019a pas enregistr\u00e9 ' +
+      Object.keys(droppedWarned).join(', ') + ' : le fichier Code.gs d\u00e9ploy\u00e9 est plus ancien ' +
+      'que cette page. Dans Apps Script : collez le Code.gs \u00e0 jour, puis D\u00e9ployer \u2192 ' +
+      'G\u00e9rer les d\u00e9ploiements \u2192 crayon \u2192 Version : Nouvelle version \u2192 D\u00e9ployer. ' +
+      'Enregistrer le code ne suffit pas. Le reste de tes donn\u00e9es est bien enregistr\u00e9.');
   }
 
   function retryNow() {
@@ -1681,6 +1707,14 @@
     $('md-geocode').addEventListener('click', geocode);
     $('md-address').addEventListener('keydown', function (ev) {
       if (ev.key === 'Enter') { ev.preventDefault(); geocode(); }
+    });
+    // Se guarda al teclear, como todo lo demas: antes solo salia al pulsar
+    // \u00abChercher\u00bb, y una direccion escrita y no buscada se perdia al cerrar.
+    $('md-address').addEventListener('input', function () {
+      var row = byId(state.applications, openAppId);
+      if (!row) return;
+      row.ubicacion = $('md-address').value;
+      enqueue('app:' + row.id, 'upsertApplication', row);
     });
   }
 

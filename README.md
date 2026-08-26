@@ -48,6 +48,21 @@ No hace falta crear ninguna pestaña ni cabecera a mano: el script crea las hoja
 5. **Implementar** y autoriza los permisos que pide Google.
 6. Copia la **URL de la aplicación web**. Acaba en `/exec`. Ésa es la clave.
 
+### Al actualizar el `Code.gs`: hay que volver a implementar
+
+Esto muerde, y ya ha mordido. La URL `/exec` sirve **una versión concreta** del script:
+pegar el código nuevo en el editor y guardarlo **no cambia** lo que la página recibe.
+Cada vez que `Code.gs` cambia —sobre todo si añade columnas— hay que hacer:
+
+> **Implementar → Gestionar implementaciones → lápiz → Versión: Nueva versión → Implementar**
+
+Si no, el backend antiguo sigue respondiendo `ok` y **tira sin avisar las columnas que
+todavía no conoce**: el texto que escribes en esos campos desaparece al recargar, con el
+indicador diciendo *Guardado*. Ahora la página lo detecta —compara la fila que envía con
+la que el script le devuelve— y lo dice en un aviso ámbar en vez de callarse. Para
+comprobarlo a mano: la fila 1 de la pestaña `Applications` tiene que llevar todas las
+columnas de la tabla de más abajo (hoy hasta `cartaMotivacion`, columna U).
+
 **Si al conectar sale que Google no deja entrar (error 403 / «Necesitas acceso»):**
 la implementación no está en «Cualquier usuario». Ojo con las dos opciones parecidas —
 hace falta **«Cualquier usuario»**, no «Cualquier usuario con una cuenta de Google»:
@@ -130,12 +145,19 @@ rompieron una vez:
   pelo, con frases alrededor); que las filas generadas encajan **exactamente** con las
   columnas de la hoja —un campo de más se perdería en silencio—; y que `importOffers`
   escribe de verdad contra el simulador de Sheets.
+- **Que nada se pueda perder en silencio.** Que todo campo pintado se engancha al
+  guardado, y que una hoja con un `Code.gs` anterior —que responde `ok` y descarta las
+  columnas que no conoce— se detecta y se avisa. Existe por un fallo real: los campos
+  «pourquoi cette note» y «lettre de motivation» se perdían al recargar, con el indicador
+  en *Guardado*, porque la implementación seguía siendo la de antes.
 - **La estructura del modal.** Que el scroll vive en `.modal-body` y la cabecera no es
   `sticky`. Cuando `.modal` era a la vez contenedor flex con `margin:auto` y el elemento
   con scroll, un panel más alto que la pantalla desplazaba su borde superior por encima
   del origen del scroll y el contenido pasaba por delante del título.
 
-**Guardado.** Cada tecleo actualiza la pantalla al momento y encola la fila en una cola
+**Guardado.** Todo campo editable de la página se guarda solo; no hay ningún botón de
+guardar y ninguna excepción (una prueba lo verifica campo por campo). Cada tecleo
+actualiza la pantalla al momento y encola la fila en una cola
 de escritura con una clave por registro. Si sigues escribiendo en el mismo campo, la
 versión nueva sustituye a la que aún no ha salido, así que escribir rápido no genera
 decenas de peticiones. La cola se vacía en orden, de una en una; si falla la red
