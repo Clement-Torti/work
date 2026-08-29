@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#1B7A6B">
-<meta name="description" content="Un seul endroit pour savoir quoi chercher et garder la trace de sa recherche d'emploi à Strasbourg.">
-<title>Ma recherche d'emploi à Strasbourg</title>
+<meta name="description" content="Un seul endroit pour la recherche d'emploi, la voiture et le logement à Strasbourg.">
+<title>Ma nouvelle vie à Strasbourg</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
@@ -17,8 +17,8 @@
      1. Connexion : demander l'URL de l'application web
      ============================================================ -->
 <main id="view-connect" class="sheet sheet--narrow" hidden>
-  <h1 class="doc-title">🎯 Ma recherche d'emploi à Strasbourg</h1>
-  <p class="doc-subtitle">Un seul endroit pour savoir quoi chercher et garder la trace de tout</p>
+  <h1 class="doc-title">🎯 Ma nouvelle vie à Strasbourg</h1>
+  <p class="doc-subtitle">Le travail, la voiture, le logement — au même endroit</p>
 
   <div id="connect-error" class="banner" hidden></div>
 
@@ -57,7 +57,7 @@
      2. Choisir un profil
      ============================================================ -->
 <main id="view-profiles" class="sheet sheet--narrow" hidden>
-  <h1 class="doc-title">🎯 Ma recherche d'emploi à Strasbourg</h1>
+  <h1 class="doc-title">🎯 Ma nouvelle vie à Strasbourg</h1>
   <p class="doc-subtitle">Qui es-tu ?</p>
 
   <div id="profiles-error" class="banner" hidden></div>
@@ -99,8 +99,18 @@
   <div id="app-error" class="banner" hidden></div>
   <div id="stale-backend" class="banner banner--warn" hidden></div>
 
-  <h1 class="doc-title">🎯 Ma recherche d'emploi à Strasbourg</h1>
-  <p class="doc-subtitle">Un seul endroit pour savoir quoi chercher et garder la trace de tout</p>
+  <h1 class="doc-title">🎯 Ma nouvelle vie à Strasbourg</h1>
+  <p class="doc-subtitle">Le travail, la voiture, le logement — au même endroit</p>
+
+  <nav class="tabs" role="tablist" aria-label="Les trois recherches">
+    <button class="tab" type="button" role="tab" data-tab="emploi">💼 Emploi</button>
+    <button class="tab" type="button" role="tab" data-tab="vehicule">🚗 Véhicule</button>
+    <button class="tab" type="button" role="tab" data-tab="logement">🏠 Logement</button>
+  </nav>
+
+<!-- =========================== VOLET EMPLOI =========================== -->
+<div class="pane" data-pane="emploi">
+
   <p class="doc-note">
     Ce document se remplit petit à petit, sans pression. L'idée, c'est un outil vraiment utile,
     pas un formulaire pénible. Tout ce que tu écris est enregistré tout seul.
@@ -199,6 +209,160 @@
     </p>
     <div id="all-questions"></div>
   </section>
+
+</div><!-- /volet emploi -->
+
+<!-- ========================== VOLET VÉHICULE ========================== -->
+<div class="pane" data-pane="vehicule" hidden>
+
+  <p class="doc-note">
+    Acheter une voiture en France sans se faire avoir : d'abord où chercher, ensuite ce que
+    tu veux vraiment, puis les modèles qui tiennent la route, et enfin les annonces une par une.
+  </p>
+
+  <!-- 1. Où chercher -->
+  <section aria-labelledby="h-veh-sites">
+    <h2 id="h-veh-sites" class="section">1. Où chercher une voiture</h2>
+    <p class="section-lead">Les sites qui comptent en France, neuf et occasion. Coche ce qui est déjà fait :</p>
+    <div id="veh-sites" class="channels"></div>
+    <div class="table-foot">
+      <button class="btn btn--sm" type="button" data-add-site="veh">+ Ajouter un site</button>
+      <span id="veh-sites-count" class="count-hint"></span>
+    </div>
+  </section>
+
+  <!-- 2. Mes critères -->
+  <section aria-labelledby="h-veh-crit">
+    <h2 id="h-veh-crit" class="section">2. Mes critères</h2>
+    <p class="section-lead">
+      Ce que la voiture doit avoir. Chaque critère devient une colonne du tableau des modèles,
+      juste en dessous.
+    </p>
+    <div class="table-wrap">
+      <table class="grid">
+        <thead>
+          <tr>
+            <th style="width:26%">Critère</th>
+            <th style="width:48%">Ce que ça veut dire concrètement</th>
+            <th style="width:22%">Importance</th>
+            <th style="width:44px"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="veh-criteria-body"></tbody>
+      </table>
+    </div>
+    <div class="table-foot">
+      <button class="btn btn--sm" type="button" data-add-criterion="veh">+ Ajouter un critère</button>
+      <button class="btn btn--sm" type="button" data-seed-criteria="veh">Partir d'une liste toute faite</button>
+      <span id="veh-criteria-count" class="count-hint"></span>
+    </div>
+  </section>
+
+  <!-- 3. Modèles candidats -->
+  <section aria-labelledby="h-veh-models">
+    <h2 id="h-veh-models" class="section">3. Modèles candidats</h2>
+    <p class="section-lead">
+      Un modèle par ligne, une colonne par critère. La photo aide à s'y retrouver : colle
+      l'adresse d'une image (clic droit sur une photo → « Copier l'adresse de l'image »).
+    </p>
+    <div id="veh-models"></div>
+    <div class="table-foot">
+      <button class="btn btn--sm" type="button" id="veh-add-model">+ Ajouter un modèle</button>
+      <span id="veh-models-count" class="count-hint"></span>
+    </div>
+  </section>
+
+  <!-- 4. Les annonces -->
+  <section aria-labelledby="h-veh-offers">
+    <h2 id="h-veh-offers" class="section">4. Les annonces</h2>
+    <p class="section-lead">
+      Les voitures concrètes que tu as trouvées. Clique sur <strong>Fiche</strong> pour le détail :
+      neuf ou occasion, et pour une occasion, la liste de tout ce qu'il faut demander au vendeur.
+    </p>
+    <div id="veh-bar" class="tracking-bar"></div>
+    <div id="veh-stats" class="stats"></div>
+    <div id="veh-offers"></div>
+  </section>
+</div><!-- /volet véhicule -->
+
+<!-- ========================== VOLET LOGEMENT ========================== -->
+<div class="pane" data-pane="logement" hidden>
+
+  <p class="doc-note">
+    Louer à Strasbourg : les sites, ce que tu cherches, les annonces, et la carte pour voir
+    d'un coup d'œil si c'est vraiment bien placé.
+  </p>
+
+  <!-- 1. Où chercher -->
+  <section aria-labelledby="h-home-sites">
+    <h2 id="h-home-sites" class="section">1. Où chercher un logement</h2>
+    <p class="section-lead">Les sites, les agences et le dossier à préparer :</p>
+    <div id="home-sites" class="channels"></div>
+    <div class="table-foot">
+      <button class="btn btn--sm" type="button" data-add-site="home">+ Ajouter un site</button>
+      <span id="home-sites-count" class="count-hint"></span>
+    </div>
+  </section>
+
+  <!-- 2. Mes critères -->
+  <section aria-labelledby="h-home-crit">
+    <h2 id="h-home-crit" class="section">2. Mes critères</h2>
+    <p class="section-lead">
+      Ce à quoi le logement doit répondre. Chaque critère devient une colonne du tableau de
+      comparaison, plus bas.
+    </p>
+    <div class="table-wrap">
+      <table class="grid">
+        <thead>
+          <tr>
+            <th style="width:26%">Critère</th>
+            <th style="width:48%">Ce que ça veut dire concrètement</th>
+            <th style="width:22%">Importance</th>
+            <th style="width:44px"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="home-criteria-body"></tbody>
+      </table>
+    </div>
+    <div class="table-foot">
+      <button class="btn btn--sm" type="button" data-add-criterion="home">+ Ajouter un critère</button>
+      <button class="btn btn--sm" type="button" data-seed-criteria="home">Partir d'une liste toute faite</button>
+      <span id="home-criteria-count" class="count-hint"></span>
+    </div>
+  </section>
+
+  <!-- 3. Les annonces -->
+  <section aria-labelledby="h-home-offers">
+    <h2 id="h-home-offers" class="section">3. Les annonces</h2>
+    <p class="section-lead">
+      Clique sur <strong>Fiche</strong> pour le détail : la carte, et la liste de ce qu'il faut
+      demander et vérifier pendant la visite.
+    </p>
+    <div id="home-bar" class="tracking-bar"></div>
+    <div id="home-stats" class="stats"></div>
+    <div id="home-offers"></div>
+  </section>
+
+  <!-- 4. Comparer -->
+  <section aria-labelledby="h-home-compare">
+    <h2 id="h-home-compare" class="section">4. Comparer les annonces</h2>
+    <p class="section-lead">Les annonces côte à côte, une colonne par critère.</p>
+    <div id="home-compare"></div>
+  </section>
+
+  <!-- 5. La carte -->
+  <section aria-labelledby="h-home-map">
+    <h2 id="h-home-map" class="section">5. Où elles sont</h2>
+    <p class="section-lead">
+      Toutes les annonces sur une carte. Le loyer s'affiche sur le point ; en passant sur une
+      ligne du tableau, son point ressort.
+    </p>
+    <div id="home-map" class="companies-map"></div>
+    <p class="md-hint" id="home-map-hint">
+      Ouvre la fiche d'une annonce et cherche son adresse pour la poser sur la carte.
+    </p>
+  </section>
+</div><!-- /volet logement -->
 
   <hr class="rule">
   <p class="doc-footer">
@@ -342,6 +506,50 @@
       <span class="modal-foot-spacer"></span>
       <span id="ai-foot-hint" class="count-hint"></span>
       <button id="ai-import" class="btn btn--primary btn--sm" type="button">Importer les offres</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ============================================================
+     Fiche d'une annonce de voiture
+     ============================================================ -->
+<div id="veh-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="veh-modal-title">
+  <div class="modal-backdrop" data-close-veh></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <div>
+        <h2 id="veh-modal-title" class="modal-title"></h2>
+        <p id="veh-modal-sub" class="modal-sub"></p>
+      </div>
+      <button class="modal-close" type="button" data-close-veh aria-label="Fermer la fiche">×</button>
+    </header>
+    <div id="veh-modal-body" class="modal-body"></div>
+    <footer class="modal-foot">
+      <button class="btn btn--sm" type="button" data-close-veh>Fermer</button>
+      <span class="modal-foot-spacer"></span>
+      <span id="veh-modal-foot" class="count-hint"></span>
+    </footer>
+  </div>
+</div>
+
+<!-- ============================================================
+     Fiche d'une annonce de logement
+     ============================================================ -->
+<div id="home-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="home-modal-title">
+  <div class="modal-backdrop" data-close-home></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <div>
+        <h2 id="home-modal-title" class="modal-title"></h2>
+        <p id="home-modal-sub" class="modal-sub"></p>
+      </div>
+      <button class="modal-close" type="button" data-close-home aria-label="Fermer la fiche">×</button>
+    </header>
+    <div id="home-modal-body" class="modal-body"></div>
+    <footer class="modal-foot">
+      <button class="btn btn--sm" type="button" data-close-home>Fermer</button>
+      <span class="modal-foot-spacer"></span>
+      <span id="home-modal-foot" class="count-hint"></span>
     </footer>
   </div>
 </div>

@@ -17,6 +17,9 @@ guardados en **tu propia hoja de Google Sheets**.
 - Nota sobre 10 por candidatura (con un texto libre para explicar por qué esa nota), y
   una **ficha detallada** por candidatura con mapa, misiones, sueldo, modalidad,
   ventajas, lettre de motivation, preguntas de entrevista y contactos.
+- **Tres búsquedas en una página**, en pestañas: **Emploi**, **Véhicule** y **Logement**.
+  Las tres tienen la misma forma —dónde buscar, mis criterios, los candidatos y las
+  ofertas concretas con su ficha— y comparten el mismo código.
 - **Búsqueda de ofertas con IA**: la página genera un prompt con tu perfil, tus tipos de
   puesto y lo que ya tienes apuntado; tú lo pegas en la IA que quieras y traes de vuelta
   su JSON, que se convierte en candidaturas «à valider». La página no habla con ninguna
@@ -132,13 +135,20 @@ tools/              comprobación del contrato entre la página y el script
 template.docx       el documento original, como referencia del diseño
 ```
 
-`node tools/check-contract.js` (sin instalar nada) comprueba dos invariantes que ya se
-rompieron una vez:
+`node tools/check-contract.js` (sin instalar nada, y arrastra a `tools/check-boot.js`)
+comprueba los invariantes que ya se rompieron alguna vez:
 
 - **El contrato con el script.** Que toda acción que la página invoca tiene su `case` en
   `Code.gs`, que `loadProfile` devuelve todas las colecciones que la página lee, y que no
   hay tablas fantasma. Existe porque se subió la página llamando a `upsertCompany` con el
   script sin esa ruta.
+- **Que la página arranca de verdad** (`tools/check-boot.js`). Carga `assets/app.js`
+  contra un DOM de mentira construido con los ids del `index.html` real, con una hoja
+  simulada detrás, y mira lo que pinta: los tres volets, las dos fichas, marcar un punto
+  de una lista, cambiar un veredicto. Existe por dos fallos reales que ninguna prueba
+  estática veía: un listener enganchado a un contenedor que solo existe dentro de un modal
+  ya abierto (reventaba `app.js` entero: la página no arrancaba), y una lista de revisión a
+  medias en la que marcar una casilla no hacía nada, en silencio.
 - **El circuito de la IA.** Que el prompt lleva el perfil, los tipos de puesto, los
   criterios y las candidaturas que ya existen; que el ejemplo de JSON que le damos es
   JSON válido; que la respuesta se lee venga como venga (bloque de código, objeto a
@@ -211,14 +221,31 @@ arrastrando el marcador; se guarda como `lat`/`lon` en la hoja.
 | `Companies` | `id`, `profileId`, `position`, `name`, `description`, `ubicacion`, `lat`, `lon` |
 | `Questions` | `id`, `profileId`, `applicationId`, `position`, `question`, `answered`, `answer` |
 | `Learnings` | `id`, `profileId`, `applicationId`, `position`, `note` |
+| `Sites` | `id`, `profileId`, `domain`, `siteKey`, `name`, `url`, `hecho`, `notas` |
+| `Criteria` | `id`, `profileId`, `domain`, `position`, `label`, `detalle`, `importancia` |
+| `VehModels` | `id`, `profileId`, `position`, `marca`, `modelo`, `motor`, `anos`, `precioMin`, `precioMax`, `imagen`, `notas` |
+| `Checks` | `id`, `profileId`, `domain`, `subjectId`, `criterionId`, `verdict`, `nota` |
+| `VehOffers` | `id`, `profileId`, `modelId`, `position`, `fecha`, `titulo`, `vendedor`, `tipoVendedor`, `precio`, `km`, `ano`, `estadoVeh`, `controlTecnico`, `enlace`, `telefono`, `ubicacion`, `estado`, `nota`, `notaComentario`, `proximaAccion` |
+| `HomeOffers` | `id`, `profileId`, `position`, `fecha`, `titulo`, `agencia`, `tipoVendedor`, `alquiler`, `cargas`, `superficie`, `piezas`, `planta`, `muebles`, `dpe`, `disponible`, `enlace`, `telefono`, `ubicacion`, `lat`, `lon`, `estado`, `nota`, `notaComentario`, `proximaAccion` |
+| `Inspections` | `id`, `profileId`, `domain`, `offerId`, `position`, `item`, `done`, `nota` |
 | `Contacts` | `id`, `profileId`, `applicationId`, `position`, `name`, `role`, `email`, `phone` |
 
 Las columnas nuevas se añaden **siempre al final**. Insertarlas en medio desalinearía
 las filas ya guardadas: es la razón por la que `nota` aparece después de `enlace` y no
 junto a `estado`, aunque en la página salgan seguidas.
 
-La importación de la IA escribe todas sus filas de una vez, con la acción `importOffers`:
-una sola petición en vez de sesenta seguidas.
+En `Sites`, `Criteria`, `Checks` e `Inspections`, la columna `domain` vale `veh` o `home`:
+las tres búsquedas comparten la forma pero no las tablas de ofertas, porque sus campos no
+tienen nada que ver.
+
+Los ids de `Sites`, `Checks` e `Inspections` **se derivan** de lo que representan
+(`perfil::dominio::sitio`, `candidato::criterio`, `oferta::índice`) en vez de ser
+aleatorios: el mismo perfil abierto en dos aparatos escribe en la misma fila en vez de
+crear duplicados.
+
+La importación de la IA escribe todas sus filas de una vez, con la acción `importOffers`;
+las listas de revisión (24 puntos de golpe) usan `importRows`. Una sola petición en vez de
+sesenta seguidas.
 
 Se puede editar a mano en Sheets sin problema, siempre que no se toque la columna `id`
 ni la fila de cabeceras. Borrar un tipo de puesto desde la página borra también sus
@@ -288,5 +315,50 @@ candidaturas; borrar un perfil borra todo lo suyo.
    botón *Fiche*. Un botón *Tout déplier* las abre todas de golpe, y al imprimir se
    abren solas. Se edita indistintamente desde aquí o desde la ficha.
 
+### Pestaña Véhicule
+
+1. **Dónde buscar** — los sitios que cuentan en Francia para nuevo y de ocasión (La
+   Centrale, Leboncoin, AutoScout24, mandatarios de coche nuevo con descuento…), más los
+   tres trámites que se olvidan siempre: **Histovec** (historial oficial y gratuito),
+   el **certificado de no-pignoración**, y la **ZFE de Estrasburgo** con su vignette
+   Crit'Air. Con casilla de «hecho» y sitio para notas.
+2. **Mis criterios** — los tuyos, o una lista de diez ya escrita (presupuesto total,
+   fiabilidad, Crit'Air, coste de mantenimiento, kilometraje…). Cada criterio se convierte
+   en una columna del tablero siguiente.
+3. **Modelos candidatos** — una fila por modelo, una **columna por criterio**, y en cada
+   cruce ✓ Sí / ~ En parte / ✗ No / ? Por verificar. Al final, un **score** (cuántos
+   criterios cumple) que se colorea solo. Cada modelo lleva una **foto**: se pega la
+   *dirección* de una imagen (clic derecho → «Copiar la dirección de la imagen»), porque
+   una hoja de cálculo guarda texto, no ficheros.
+4. **Los anuncios** — los coches concretos, con su modelo, precio, km, año y estado. La
+   **ficha** de cada uno pide neuf u occasion: si es **occasion**, se despliega la lista
+   de **24 puntos** que hay que preguntar y revisar antes de pagar (Histovec, distribución,
+   arranque en frío, óxido en los bajos, fecha DOT de los neumáticos, prueba en carretera,
+   coherencia del kilometraje…), cada uno con su casilla y sitio para lo que ha contestado
+   el vendedor. Si es **neuf**, salen en su lugar los seis puntos que sí se negocian
+   (descuento, plazo de entrega, recompra, financiación…).
+
+### Pestaña Logement
+
+1. **Dónde buscar** — SeLoger, Leboncoin, PAP, Bien'ici, agencias, colocación, grupos de
+   Facebook, y lo que de verdad desbloquea un alquiler en Francia sin historial local:
+   **DossierFacile** (expediente oficial gratuito) y **Visale** (avalista del Estado),
+   más la simulación de la ayuda de la CAF.
+2. **Mis criterios** — igual que en la otra pestaña, con once ya escritos.
+3. **Los anuncios** — alquiler y gastos (con el **total** calculado), superficie, piezas,
+   quién alquila, estado y nota. La **ficha** lleva el DPE, la planta, si está amueblado,
+   la fecha de disponibilidad, **su propio mapa** para posar el punto, los criterios uno
+   por uno, y la lista de **22 puntos para la visita** (humedad, ruido a distintas horas,
+   presión del agua, qué cubren los gastos, obras previstas, estado de lugar…).
+4. **Comparar** — las mismas ofertas en tablero, una columna por criterio, con su score.
+5. **El mapa** — todas las ofertas situadas, con el alquiler en la etiqueta. Al pasar por
+   una fila del tablero, su punto se resalta; al hacer clic en un punto, se abre su ficha.
+
+Las listas de revisión **no ocupan ni una fila** en la hoja hasta que se toca algo: se ven
+desde el primer momento, y se guardan enteras de una vez al marcar la primera casilla.
+Los estados «Refusée» y «Écartée» funcionan igual que en el empleo: la oferta sale del
+tablero sin borrarse, y un botón las vuelve a mostrar.
+
 En pantalla pequeña las tablas se convierten en tarjetas apiladas con el nombre de cada
-columna encima, para no tener que hacer scroll horizontal.
+columna encima, para no tener que hacer scroll horizontal. El tablero de criterios, que
+crece a lo ancho, se desplaza solo dentro de su marco.

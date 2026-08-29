@@ -177,7 +177,16 @@
     companies: [],
     questions: [],
     learnings: [],
-    contacts: []
+    contacts: [],
+
+    // Las otras dos busquedas
+    sites: [],
+    criteria: [],
+    vehModels: [],
+    checks: [],
+    vehOffers: [],
+    homeOffers: [],
+    inspections: []
   };
 
   var openAppId = null;   // candidatura abierta en la ficha
@@ -572,6 +581,13 @@
       state.questions = data.questions || [];
       state.learnings = data.learnings || [];
       state.contacts = data.contacts || [];
+      state.sites = data.sites || [];
+      state.criteria = data.criteria || [];
+      state.vehModels = data.vehModels || [];
+      state.checks = data.checks || [];
+      state.vehOffers = data.vehOffers || [];
+      state.homeOffers = data.homeOffers || [];
+      state.inspections = data.inspections || [];
       localStorage.setItem(LS_PROFILE, id);
       renderApp();
       hideBanner('app-error');
@@ -601,6 +617,12 @@
     renderCompanies();
     renderTracking();
     renderAllQuestions();
+    renderVehicule();
+    renderLogement();
+    // La pestana se recuerda: al recargar se vuelve donde estabas.
+    var saved = 'emploi';
+    try { saved = localStorage.getItem(LS_TAB) || 'emploi'; } catch (e) {}
+    showTab(saved);
   }
 
   function selectHtml(list, value, field, extra) {
@@ -2743,6 +2765,1762 @@
     }
     return h;
   }
+
+
+  // =====================================================================
+  //  Les deux autres recherches : vehicule et logement
+  //
+  //  Las tres busquedas tienen la misma forma: donde buscar, mis criterios,
+  //  los candidatos con una columna por criterio, los anuncios y su ficha.
+  //  Lo comun vive aqui una sola vez, con el dominio ('veh' | 'home') como
+  //  parametro; lo que cambia son los campos de cada anuncio.
+  // =====================================================================
+
+  var LS_TAB = 'estrasburgo.tab';
+  var TABS = ['emploi', 'vehicule', 'logement'];
+
+  // ------------------------------------------------------- catalogos: sitios
+
+  var SITES = {
+    veh: [
+      { key: 'lacentrale', name: 'La Centrale',
+        why: 'La r\u00e9f\u00e9rence de l\u2019occasion en France, avec la cote gratuite.',
+        links: [{ label: 'Occasions Grand Est', url: 'https://www.lacentrale.fr/listing?regions=FR-GES' },
+                { label: 'Cote gratuite', url: 'https://www.lacentrale.fr/cote-voitures-occasion.php' }] },
+      { key: 'leboncoin', name: 'Leboncoin',
+        why: 'Le plus de choix entre particuliers, et souvent les meilleurs prix.',
+        links: [{ label: 'Voitures Strasbourg', url: 'https://www.leboncoin.fr/recherche?category=2&locations=Strasbourg_67000' }] },
+      { key: 'autoscout24', name: 'AutoScout24',
+        why: 'Beaucoup d\u2019occasions allemandes, souvent bien entretenues. Fronti\u00e8re \u00e0 10 km.',
+        links: [{ label: 'Autour de 67000', url: 'https://www.autoscout24.fr/lst?cy=F&zip=67000&zipr=50' }] },
+      { key: 'paruvendu', name: 'ParuVendu',
+        why: 'Des annonces qu\u2019on ne voit pas ailleurs, surtout chez les petits garages.',
+        links: [{ label: 'Autos', url: 'https://www.paruvendu.fr/auto-moto/' }] },
+      { key: 'reconditionne', name: 'Occasions reconditionn\u00e9es',
+        why: 'Plus cher qu\u2019un particulier, mais garanti et sans surprise.',
+        links: [{ label: 'Aramisauto', url: 'https://www.aramisauto.com/achat' },
+                { label: 'Spoticar', url: 'https://www.spoticar.fr/vehicules-occasion' },
+                { label: 'Renault Occasions', url: 'https://occasions.renault.fr/' }] },
+      { key: 'mandataires', name: 'Neuf remis\u00e9 (mandataires)',
+        why: 'Du neuf 15 \u00e0 25 % moins cher qu\u2019en concession, m\u00eame garantie constructeur.',
+        links: [{ label: 'Elite Auto', url: 'https://www.eliteauto.fr/' },
+                { label: 'Aramis neuf', url: 'https://www.aramisauto.com/neuf' }] },
+      { key: 'garages', name: 'Garages et concessions autour de Strasbourg',
+        why: 'Le stock local ne finit pas toujours en ligne. Passer voir marche encore.',
+        links: [{ label: 'Chercher', url: 'https://www.google.com/maps/search/garage+voiture+occasion+Strasbourg' }] },
+      { key: 'histovec', name: 'Histovec \u2014 l\u2019historique officiel',
+        why: 'GRATUIT et officiel : accidents, kilom\u00e9trages, propri\u00e9taires. \u00c0 demander AVANT d\u2019acheter.',
+        links: [{ label: 'Histovec', url: 'https://histovec.interieur.gouv.fr/' }] },
+      { key: 'nongage', name: 'Certificat de non-gage',
+        why: 'Prouve que la voiture n\u2019est pas gag\u00e9e ni oppos\u00e9e. Le vendeur doit le fournir.',
+        links: [{ label: 'Demander', url: 'https://siv.interieur.gouv.fr/map-usg-ui/do/accueil_certificat' }] },
+      { key: 'zfe', name: 'ZFE de Strasbourg et Crit\u2019Air',
+        why: 'Strasbourg limite les vieux diesels : v\u00e9rifier la vignette AVANT d\u2019acheter.',
+        links: [{ label: 'ZFE Eurom\u00e9tropole', url: 'https://www.strasbourg.eu/zone-a-faibles-emissions' },
+                { label: 'Commander Crit\u2019Air', url: 'https://www.certificat-air.gouv.fr/' }] }
+    ],
+    home: [
+      { key: 'seloger', name: 'SeLoger',
+        why: 'Le plus gros volume d\u2019annonces d\u2019agences.',
+        links: [{ label: 'Locations Strasbourg', url: 'https://www.seloger.com/immobilier/locations/immo-strasbourg-67/' }] },
+      { key: 'leboncoin', name: 'Leboncoin',
+        why: 'Les particuliers, donc sans frais d\u2019agence. \u00c7a part tr\u00e8s vite : y aller tous les jours.',
+        links: [{ label: 'Locations Strasbourg', url: 'https://www.leboncoin.fr/recherche?category=10&locations=Strasbourg_67000' }] },
+      { key: 'pap', name: 'PAP (de particulier \u00e0 particulier)',
+        why: 'Que des particuliers, z\u00e9ro frais d\u2019agence.',
+        links: [{ label: 'Strasbourg', url: 'https://www.pap.fr/annonce/locations-strasbourg-67000-g43913' }] },
+      { key: 'bienici', name: 'Bien\u2019ici',
+        why: 'La recherche sur carte est la meilleure : pratique pour viser un quartier.',
+        links: [{ label: 'Carte Strasbourg', url: 'https://www.bienici.com/recherche/location/strasbourg-67000' }] },
+      { key: 'agences', name: 'Agences de Strasbourg',
+        why: 'Beaucoup ne publient que sur leur propre site. Passer en agence aide.',
+        links: [{ label: 'Orpi', url: 'https://www.orpi.com/recherche/rent?transaction=rent&locations%5B0%5D%5Bvalue%5D=strasbourg' },
+                { label: 'Foncia', url: 'https://fr.foncia.com/location/strasbourg-67000' },
+                { label: 'Century 21', url: 'https://www.century21.fr/annonces/location-immobilier/' }] },
+      { key: 'coloc', name: 'Colocation',
+        why: 'Bien moins cher, et un moyen rapide de conna\u00eetre du monde en arrivant.',
+        links: [{ label: 'La Carte des Colocs', url: 'https://www.lacartedescolocs.fr/colocations/france/strasbourg' },
+                { label: 'Appartager', url: 'https://www.appartager.com/colocation/strasbourg' }] },
+      { key: 'groupes', name: 'Groupes Facebook',
+        why: 'Beaucoup de locations se font l\u00e0 avant d\u2019\u00eatre publi\u00e9es.',
+        links: [{ label: 'Location Strasbourg', url: 'https://www.facebook.com/search/groups/?q=location%20appartement%20Strasbourg' }] },
+      { key: 'dossierfacile', name: 'DossierFacile \u2014 mon dossier',
+        why: 'Dossier locataire officiel et gratuit, v\u00e9rifi\u00e9 par l\u2019\u00c9tat : \u00e7a rassure les propri\u00e9taires. \u00c0 pr\u00e9parer AVANT de visiter.',
+        links: [{ label: 'Cr\u00e9er mon dossier', url: 'https://www.dossierfacile.logement.gouv.fr/' }] },
+      { key: 'visale', name: 'Visale \u2014 le garant gratuit',
+        why: 'Garantie de l\u2019\u00c9tat quand on n\u2019a pas de garant en France. Beaucoup l\u2019acceptent.',
+        links: [{ label: 'Visale', url: 'https://www.visale.fr/' }] },
+      { key: 'apl', name: 'Aide au logement (CAF)',
+        why: '\u00c0 simuler avant de signer : \u00e7a change le loyer r\u00e9el.',
+        links: [{ label: 'Simulation CAF', url: 'https://wwwd.caf.fr/wps/portal/caffr/aidesetdemarches/mesdemarches/faireunesimulation/lelogement' }] },
+      { key: 'anil', name: 'ANIL \u2014 mes droits',
+        why: 'Ce que le propri\u00e9taire peut demander ou pas, les plafonds, le bail.',
+        links: [{ label: 'ANIL', url: 'https://www.anil.org/' }] }
+    ]
+  };
+
+  // -------------------------------------------------- catalogos: criterios
+
+  var CRITERIA_SEED = {
+    veh: [
+      ['Budget total tout compris', 'Prix + carte grise + assurance + petites r\u00e9parations \u00e0 pr\u00e9voir', 'Haute'],
+      ['Fiabilit\u00e9 connue du mod\u00e8le', 'Ce qu\u2019en disent les forums et les garagistes, pas la pub', 'Haute'],
+      ['Vignette Crit\u2019Air compatible ZFE', 'Strasbourg restreint les vieux diesels : Crit\u2019Air 2 minimum', 'Haute'],
+      ['Co\u00fbt d\u2019entretien et pi\u00e8ces', 'Pi\u00e8ces trouvables et pas ch\u00e8res, r\u00e9vision \u00e0 un prix raisonnable', 'Moyenne'],
+      ['Consommation r\u00e9elle', 'Ce que \u00e7a consomme vraiment, pas la fiche technique', 'Moyenne'],
+      ['Kilom\u00e9trage raisonnable', 'Coh\u00e9rent avec l\u2019\u00e2ge : environ 15 000 km par an', 'Moyenne'],
+      ['Entretien suivi', 'Carnet et factures, r\u00e9visions faites aux bons kilom\u00e9trages', 'Haute'],
+      ['Assurance abordable', 'Demander un devis avant d\u2019acheter : \u00e7a surprend parfois', 'Moyenne'],
+      ['Taille et coffre', 'Assez grand pour ce que j\u2019en fais, assez petit pour se garer ici', 'Moyenne'],
+      ['Bo\u00eete automatique', 'Confort en ville, mais plus cher et plus fragile', 'Basse']
+    ],
+    home: [
+      ['Loyer + charges dans le budget', 'Charges comprises, et v\u00e9rifier ce qu\u2019elles couvrent', 'Haute'],
+      ['Temps de trajet au travail', '\u00c0 l\u2019heure de pointe, en tram ou en v\u00e9lo, porte \u00e0 porte', 'Haute'],
+      ['Surface et nombre de pi\u00e8ces', 'Ce dont j\u2019ai besoin pour vivre et pour travailler', 'Haute'],
+      ['Chauffage pas ruineux', 'DPE, type de chauffage, et une facture d\u2019hiver \u00e0 demander', 'Haute'],
+      ['Aucune humidit\u00e9', 'Odeur, taches aux angles, derri\u00e8re les meubles', 'Haute'],
+      ['Lumineux', 'Orientation, et \u00e0 quelle heure la lumi\u00e8re entre vraiment', 'Moyenne'],
+      ['Calme', 'La rue, les voisins, l\u2019immeuble \u2014 y repasser un soir', 'Moyenne'],
+      ['Cuisine \u00e9quip\u00e9e', 'Ce qui est fourni exactement : plaques, four, frigo', 'Moyenne'],
+      ['Commerces et tram \u00e0 pied', 'Courses, pharmacie, arr\u00eat de tram \u00e0 moins de 10 minutes', 'Moyenne'],
+      ['Cave, v\u00e9lo, parking', 'O\u00f9 mettre les v\u00e9los et les affaires', 'Basse'],
+      ['Fibre internet', 'Quel op\u00e9rateur passe dans l\u2019immeuble', 'Moyenne']
+    ]
+  };
+
+  // ------------------------------------------- catalogos: listas de revision
+
+  var INSPECTIONS = {
+    veh: [
+      'Demander le rapport Histovec au vendeur (gratuit, officiel : accidents, kilom\u00e9trages, propri\u00e9taires)',
+      'Carte grise au nom du vendeur, et son identit\u00e9 v\u00e9rifi\u00e9e',
+      'Certificat de situation administrative (non-gage) de moins de 15 jours',
+      'Contr\u00f4le technique de moins de 6 mois \u2014 lire TOUTES les remarques, pas seulement \u00ab favorable \u00bb',
+      'Carnet d\u2019entretien et factures : quelles r\u00e9visions, \u00e0 quels kilom\u00e9trages',
+      'Courroie de distribution : chang\u00e9e quand, \u00e0 quel kilom\u00e9trage, facture \u00e0 l\u2019appui',
+      'Embrayage : point de patinage, bruits, et \u00e0 quel kilom\u00e9trage il a \u00e9t\u00e9 fait',
+      'D\u00e9marrage \u00e0 froid : arriver sans pr\u00e9venir, le moteur ne doit pas avoir tourn\u00e9',
+      'Fum\u00e9e \u00e0 l\u2019\u00e9chappement au d\u00e9marrage puis en acc\u00e9l\u00e9rant',
+      'Huile : niveau et couleur. Liquide de refroidissement : pas d\u2019\u00e9mulsion, pas d\u2019odeur',
+      'Traces de fuite sous le moteur et sous la voiture',
+      'Aucun voyant allum\u00e9 au tableau de bord \u2014 et aucun scotch\u00e9 ou enlev\u00e9',
+      'Pneus : usure r\u00e9guli\u00e8re, m\u00eame marque, date (DOT) de moins de 5 ans',
+      'Freins : bruit, vibration au freinage, \u00e9paisseur des disques',
+      'Amortisseurs : appuyer sur chaque aile, la voiture ne doit pas rebondir',
+      'Rouille : bas de caisse, passages de roue, coffre, sous les tapis',
+      'Jeux entre les \u00e9l\u00e9ments de carrosserie, diff\u00e9rences de peinture : accident r\u00e9par\u00e9',
+      'Climatisation : elle souffle froid, et quand a-t-elle \u00e9t\u00e9 recharg\u00e9e',
+      'Tout l\u2019\u00e9lectrique : vitres, essuie-glaces, phares, clignotants, radio, prises',
+      'Essai routier : ville + une portion \u00e0 90/110 km/h. Direction droite, pas de vibration',
+      'Kilom\u00e9trage coh\u00e9rent avec l\u2019usure du volant, des p\u00e9dales et du si\u00e8ge',
+      'Combien de propri\u00e9taires, et pourquoi il la vend',
+      'N\u00e9gocier avec la cote (La Centrale / Argus) sous les yeux',
+      'Chiffrer la carte grise et l\u2019assurance AVANT de dire oui'
+    ],
+    home: [
+      'Loyer, charges, et ce que les charges couvrent exactement',
+      'D\u00e9p\u00f4t de garantie et frais d\u2019agence : demander le d\u00e9tail (ils sont plafonn\u00e9s)',
+      'DPE et type de chauffage \u2014 demander une facture d\u2019\u00e9nergie d\u2019un mois d\u2019hiver',
+      'Fen\u00eatres : double vitrage, \u00e9tanch\u00e9it\u00e9. Les ouvrir et les fermer',
+      'Humidit\u00e9 : odeur, taches noires aux angles, derri\u00e8re les meubles, sous l\u2019\u00e9vier',
+      'Ouvrir les robinets : pression et temps avant l\u2019eau chaude',
+      'Tableau \u00e9lectrique et nombre de prises par pi\u00e8ce',
+      'Bruit : la rue, les voisins, l\u2019ascenseur. Y repasser un soir ou un samedi',
+      'Luminosit\u00e9 et orientation : \u00e0 quelle heure la lumi\u00e8re entre',
+      'Vis-\u00e0-vis depuis chaque fen\u00eatre',
+      '\u00c9tat de la salle de bain et de la cuisine, et ce qui est fourni exactement',
+      'Cave, local v\u00e9lo, parking : ils existent, et sont-ils inclus dans le loyer',
+      'Internet : quel op\u00e9rateur et quel d\u00e9bit passent dans l\u2019immeuble',
+      'Compteurs individuels (eau, chauffage) ou charges au forfait',
+      'Travaux pr\u00e9vus dans l\u2019immeuble, et qui les paie',
+      'Trajet r\u00e9el jusqu\u2019au travail \u00e0 l\u2019heure de pointe',
+      'Commerces, pharmacie, laverie, arr\u00eat de tram : \u00e0 pied, chronom\u00e9tr\u00e9',
+      'Date de disponibilit\u00e9, dur\u00e9e du bail, pr\u00e9avis pour partir',
+      'Garant : est-ce que Visale est accept\u00e9',
+      'Ce qu\u2019ils veulent dans le dossier \u2014 avoir DossierFacile pr\u00eat d\u2019avance',
+      '\u00c9tat des lieux : tout photographier, noter m\u00eame les petits d\u00e9fauts',
+      'Assurance habitation obligatoire : chiffrer avant de signer'
+    ]
+  };
+
+  // -------------------------------------------------------- listas cerradas
+
+  var VERDICTS = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'oui', label: '\u2713 Oui', tone: 'good' },
+    { value: 'partiel', label: '~ En partie', tone: 'mid' },
+    { value: 'non', label: '\u2717 Non', tone: 'bad' },
+    { value: 'verifier', label: '? \u00c0 v\u00e9rifier', tone: 'progress' }
+  ];
+
+  var VEH_STATUTS = [
+    { value: '', label: '\u00c0 contacter', tone: 'todo' },
+    { value: 'Contact\u00e9e', label: 'Contact\u00e9e', tone: 'sent' },
+    { value: 'Essai pr\u00e9vu', label: 'Essai pr\u00e9vu', tone: 'progress' },
+    { value: 'Essay\u00e9e', label: 'Essay\u00e9e', tone: 'progress' },
+    { value: 'N\u00e9gociation', label: 'N\u00e9gociation', tone: 'progress' },
+    { value: 'Achet\u00e9e', label: 'Achet\u00e9e', tone: 'good' },
+    { value: 'Sans r\u00e9ponse', label: 'Sans r\u00e9ponse', tone: 'low' },
+    { value: 'Refus\u00e9e', label: 'Refus\u00e9e', tone: 'bad' },
+    { value: ST_ECARTEE, label: '\u00c9cart\u00e9e', tone: 'low' }
+  ];
+
+  var HOME_STATUTS = [
+    { value: '', label: '\u00c0 contacter', tone: 'todo' },
+    { value: 'Contact\u00e9e', label: 'Contact\u00e9e', tone: 'sent' },
+    { value: 'Visite pr\u00e9vue', label: 'Visite pr\u00e9vue', tone: 'progress' },
+    { value: 'Visit\u00e9e', label: 'Visit\u00e9e', tone: 'progress' },
+    { value: 'Dossier envoy\u00e9', label: 'Dossier envoy\u00e9', tone: 'progress' },
+    { value: 'Accept\u00e9e', label: 'Accept\u00e9e', tone: 'good' },
+    { value: 'Sans r\u00e9ponse', label: 'Sans r\u00e9ponse', tone: 'low' },
+    { value: 'Refus\u00e9e', label: 'Refus\u00e9e', tone: 'bad' },
+    { value: ST_ECARTEE, label: '\u00c9cart\u00e9e', tone: 'low' }
+  ];
+
+  var ETATS_VEH = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'Neuf', label: 'Neuf', tone: 'good' },
+    { value: 'Occasion', label: 'Occasion', tone: 'mid' }
+  ];
+
+  var VENDEURS_VEH = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'Particulier', label: 'Particulier', tone: 'mid' },
+    { value: 'Garage / concession', label: 'Garage / concession', tone: 'good' },
+    { value: 'Mandataire', label: 'Mandataire', tone: 'good' }
+  ];
+
+  var VENDEURS_HOME = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'Particulier', label: 'Particulier', tone: 'good' },
+    { value: 'Agence', label: 'Agence', tone: 'mid' },
+    { value: 'Bailleur social', label: 'Bailleur social', tone: 'good' },
+    { value: 'Colocation', label: 'Colocation', tone: 'mid' }
+  ];
+
+  var MEUBLES = [
+    { value: '', label: '\u2014', tone: 'todo' },
+    { value: 'Meubl\u00e9', label: 'Meubl\u00e9', tone: 'good' },
+    { value: 'Non meubl\u00e9', label: 'Non meubl\u00e9', tone: 'mid' }
+  ];
+
+  var DPE = (function () {
+    var out = [{ value: '', label: '\u2014', tone: 'todo' }];
+    ['A', 'B', 'C', 'D', 'E', 'F', 'G'].forEach(function (l, i) {
+      out.push({ value: l, label: l, tone: i <= 2 ? 'good' : (i <= 3 ? 'mid' : 'bad') });
+    });
+    return out;
+  })();
+
+  /** Todo lo que cambia de un dominio a otro, en un solo sitio. */
+  var DOM = {
+    veh: {
+      offers: 'vehOffers', action: 'upsertVehOffer', delAction: 'deleteVehOffer',
+      statuts: VEH_STATUTS, label: 'annonce', labelPl: 'annonces'
+    },
+    home: {
+      offers: 'homeOffers', action: 'upsertHomeOffer', delAction: 'deleteHomeOffer',
+      statuts: HOME_STATUTS, label: 'annonce', labelPl: 'annonces'
+    }
+  };
+
+  // ============================================================ onglets
+
+  function showTab(name) {
+    if (TABS.indexOf(name) < 0) name = 'emploi';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-pane]'), function (pane) {
+      pane.hidden = pane.getAttribute('data-pane') !== name;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function (tab) {
+      var on = tab.getAttribute('data-tab') === name;
+      tab.classList.toggle('is-on', on);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    try { localStorage.setItem(LS_TAB, name); } catch (e) {}
+    // Los mapas se miden mal mientras estan ocultos: hay que remedirlos.
+    if (name === 'emploi') initCompaniesMap();
+    if (name === 'logement') { initHomeMap(); syncHomeMarkers(); }
+  }
+
+  document.addEventListener('click', function (e) {
+    var tab = e.target.closest('[data-tab]');
+    if (tab) showTab(tab.getAttribute('data-tab'));
+  });
+
+  // ====================================================== 1. les sites
+
+  function siteId(domain, key) {
+    return state.profileId + '::' + domain + '::' + key;
+  }
+
+  function sitesOf(domain) {
+    return state.sites.filter(function (r) { return r.domain === domain; });
+  }
+
+  /** Devuelve (creandola en memoria si hace falta) la fila de un sitio. */
+  function siteRow(domain, key) {
+    var found = sitesOf(domain).filter(function (r) { return r.siteKey === key; })[0];
+    if (found) return found;
+    var row = {
+      id: siteId(domain, key), profileId: state.profileId, domain: domain,
+      siteKey: key, name: '', url: '', hecho: '', notas: ''
+    };
+    state.sites.push(row);
+    return row;
+  }
+
+  function customSites(domain) {
+    return sitesOf(domain).filter(function (r) {
+      return !SITES[domain].some(function (d) { return d.key === r.siteKey; });
+    });
+  }
+
+  function renderSites(domain) {
+    var html = SITES[domain].map(function (def) {
+      var row = sitesOf(domain).filter(function (r) { return r.siteKey === def.key; })[0] || {};
+      var links = def.links.map(function (l) {
+        return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>';
+      }).join('<span class="sep">\u00b7</span>');
+      var name = '<span class="ch-name" title="' + esc(def.why) + '">' + esc(def.name) + '</span>' +
+        '<span class="ch-why">' + esc(def.why) + '</span>';
+      return siteHtml(domain, def.key, name, links, row.hecho === 'si', row.notas || '', false);
+    }).join('');
+
+    html += customSites(domain).map(function (row) {
+      var links = row.url
+        ? '<a href="' + esc(normalizeUrl(row.url)) + '" target="_blank" rel="noopener">Ouvrir</a>'
+        : '<input class="ch-url" data-sfield="url" value="' + esc(row.url) +
+          '" placeholder="https://\u2026" spellcheck="false">';
+      var name = '<input class="ch-name-input" data-sfield="name" value="' + esc(row.name) +
+        '" placeholder="Nom du site">';
+      return siteHtml(domain, row.siteKey, name, links, row.hecho === 'si', row.notas || '', true);
+    }).join('');
+
+    $(domain + '-sites').innerHTML = html;
+
+    var total = SITES[domain].length + customSites(domain).length;
+    var done = sitesOf(domain).filter(function (r) { return r.hecho === 'si'; }).length;
+    $(domain + '-sites-count').textContent = done + ' / ' + total + ' d\u00e9j\u00e0 fait' + (done === 1 ? '' : 's');
+  }
+
+  function siteHtml(domain, key, nameHtml, linksHtml, done, notas, isCustom) {
+    return '<div class="channel' + (done ? ' is-done' : '') + '" data-skey="' + esc(key) + '">' +
+      '<input class="channel-check" type="checkbox" data-sfield="hecho"' + (done ? ' checked' : '') +
+        ' aria-label="Marquer ce site comme fait">' +
+      '<div class="ch-main">' + nameHtml + '</div>' +
+      '<div class="ch-links">' + linksHtml + '</div>' +
+      '<input class="channel-note" data-sfield="notas" value="' + esc(notas) + '" placeholder="Notes\u2026">' +
+      (isCustom ? '<button class="row-del" type="button" data-sdel="1" ' +
+        'aria-label="Retirer ce site">\u00d7</button>' : '') +
+    '</div>';
+  }
+
+  /** Un solo juego de listeners por dominio. */
+  function wireSites(domain) {
+    var box = $(domain + '-sites');
+
+    box.addEventListener('input', function (e) {
+      var field = e.target.getAttribute('data-sfield');
+      if (!field || e.target.type === 'checkbox') return;
+      var row = siteRow(domain, e.target.closest('[data-skey]').getAttribute('data-skey'));
+      row[field] = e.target.value;
+      enqueue('site:' + row.id, 'upsertSite', row);
+    });
+
+    box.addEventListener('change', function (e) {
+      if (e.target.getAttribute('data-sfield') !== 'hecho') return;
+      var wrap = e.target.closest('[data-skey]');
+      var row = siteRow(domain, wrap.getAttribute('data-skey'));
+      row.hecho = e.target.checked ? 'si' : '';
+      wrap.classList.toggle('is-done', e.target.checked);
+      enqueue('site:' + row.id, 'upsertSite', row);
+      renderSites(domain);
+    });
+
+    box.addEventListener('click', function (e) {
+      if (!e.target.getAttribute('data-sdel')) return;
+      var key = e.target.closest('[data-skey]').getAttribute('data-skey');
+      var row = sitesOf(domain).filter(function (r) { return r.siteKey === key; })[0];
+      if (!row || !confirm('Retirer ce site ?')) return;
+      state.sites = state.sites.filter(function (r) { return r.id !== row.id; });
+      enqueue('site-del:' + row.id, 'deleteSite', { id: row.id });
+      renderSites(domain);
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    var domain = e.target.getAttribute('data-add-site');
+    if (!domain) return;
+    var row = {
+      id: uid(), profileId: state.profileId, domain: domain, siteKey: uid(),
+      name: '', url: '', hecho: '', notas: ''
+    };
+    state.sites.push(row);
+    enqueue('site:' + row.id, 'upsertSite', row);
+    renderSites(domain);
+    focusLast('#' + domain + '-sites [data-sfield="name"]');
+  });
+
+  // =================================================== 2. les criteres
+
+  function criteriaOf(domain) {
+    return state.criteria.filter(function (r) { return r.domain === domain; });
+  }
+
+  function critLabel(row, i) {
+    return (row.label && row.label.trim()) || 'Crit\u00e8re ' + (i + 1);
+  }
+
+  function renderCriteria(domain) {
+    var rows = criteriaOf(domain);
+    var body = $(domain + '-criteria-body');
+
+    body.innerHTML = rows.length ? rows.map(function (r, i) {
+      return '<tr data-critid="' + esc(r.id) + '">' +
+        '<td data-label="Crit\u00e8re"><input class="cell-input" data-field="label" value="' +
+          esc(r.label) + '" placeholder="Ex. : loyer dans le budget"></td>' +
+        '<td data-label="Concr\u00e8tement"><textarea class="cell-input" data-field="detalle" rows="1" ' +
+          'placeholder="Ce que \u00e7a veut dire pour toi">' + esc(r.detalle) + '</textarea></td>' +
+        '<td data-label="Importance">' + selectHtml(PRIORITES, r.importancia, 'importancia') + '</td>' +
+        '<td class="cell-actions"><button class="row-del" type="button" data-critdel="1" ' +
+          'aria-label="Retirer ce crit\u00e8re">\u00d7</button></td>' +
+      '</tr>';
+    }).join('') : '<tr><td colspan="4" data-label=""><p class="empty" style="margin:10px">' +
+      'Aucun crit\u00e8re. Ajoute les tiens, ou pars de la liste toute faite.</p></td></tr>';
+
+    $(domain + '-criteria-count').textContent = rows.length
+      ? rows.length + (rows.length === 1 ? ' crit\u00e8re' : ' crit\u00e8res') + ' \u2014 autant de colonnes plus bas'
+      : '';
+    autoGrowAll(body);
+  }
+
+  function wireCriteria(domain) {
+    var body = $(domain + '-criteria-body');
+
+    body.addEventListener('input', function (e) {
+      var field = e.target.getAttribute('data-field');
+      if (!field) return;
+      var row = byId(state.criteria, e.target.closest('tr').getAttribute('data-critid'));
+      if (!row) return;
+      row[field] = e.target.value;
+      if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
+      if (field === 'label') renderChecks(domain);
+      enqueue('crit:' + row.id, 'upsertCriterion', row);
+    });
+
+    body.addEventListener('change', function (e) {
+      if (e.target.getAttribute('data-field') !== 'importancia') return;
+      var row = byId(state.criteria, e.target.closest('tr').getAttribute('data-critid'));
+      if (!row) return;
+      row.importancia = e.target.value;
+      e.target.setAttribute('data-tone', toneOf(PRIORITES, e.target.value));
+      enqueue('crit:' + row.id, 'upsertCriterion', row);
+    });
+
+    body.addEventListener('click', function (e) {
+      if (!e.target.getAttribute('data-critdel')) return;
+      var id = e.target.closest('tr').getAttribute('data-critid');
+      var row = byId(state.criteria, id);
+      if (!row) return;
+      if (!confirm('Retirer \u00ab ' + (row.label || 'ce crit\u00e8re') + ' \u00bb et ses r\u00e9ponses ?')) return;
+      state.criteria = state.criteria.filter(function (r) { return r.id !== id; });
+      state.checks = state.checks.filter(function (c) { return c.criterionId !== id; });
+      enqueue('crit-del:' + id, 'deleteCriterion', { id: id });
+      renderCriteria(domain);
+      renderChecks(domain);
+    });
+  }
+
+  function addCriterion(domain, label, detalle, importancia) {
+    var row = {
+      id: uid(), profileId: state.profileId, domain: domain,
+      position: nextPosition(criteriaOf(domain)),
+      label: label || '', detalle: detalle || '', importancia: importancia || ''
+    };
+    state.criteria.push(row);
+    enqueue('crit:' + row.id, 'upsertCriterion', row);
+    return row;
+  }
+
+  document.addEventListener('click', function (e) {
+    var add = e.target.getAttribute('data-add-criterion');
+    if (add) {
+      addCriterion(add);
+      renderCriteria(add);
+      renderChecks(add);
+      return focusLast('#' + add + '-criteria-body [data-field="label"]');
+    }
+
+    var seed = e.target.getAttribute('data-seed-criteria');
+    if (!seed) return;
+    var faltan = CRITERIA_SEED[seed].filter(function (c) {
+      return !criteriaOf(seed).some(function (r) { return normKey(r.label) === normKey(c[0]); });
+    });
+    if (!faltan.length) return alert('La liste toute faite est d\u00e9j\u00e0 l\u00e0.');
+    if (!confirm('Ajouter ' + faltan.length + ' crit\u00e8re(s) tout faits ? Tu pourras les modifier ou les retirer.')) return;
+    faltan.forEach(function (c) { addCriterion(seed, c[0], c[1], c[2]); });
+    renderCriteria(seed);
+    renderChecks(seed);
+  });
+
+  // ======================================= 3. la grille candidats x criteres
+
+  function checkId(subjectId, criterionId) {
+    return subjectId + '::' + criterionId;
+  }
+
+  /** La casilla de un candidato para un criterio. Se crea al tocarla. */
+  function checkRow(domain, subjectId, criterionId) {
+    var id = checkId(subjectId, criterionId);
+    var found = byId(state.checks, id);
+    if (found) return found;
+    var row = {
+      id: id, profileId: state.profileId, domain: domain,
+      subjectId: subjectId, criterionId: criterionId, verdict: '', nota: ''
+    };
+    state.checks.push(row);
+    return row;
+  }
+
+  function verdictOf(subjectId, criterionId) {
+    var found = byId(state.checks, checkId(subjectId, criterionId));
+    return found ? found.verdict : '';
+  }
+
+  /** Cuantos criterios cumple un candidato, sobre el total. */
+  function scoreOf(domain, subjectId) {
+    var crits = criteriaOf(domain);
+    var ok = 0, ko = 0;
+    crits.forEach(function (c) {
+      var v = verdictOf(subjectId, c.id);
+      if (v === 'oui') ok++;
+      else if (v === 'non') ko++;
+    });
+    return { ok: ok, ko: ko, total: crits.length };
+  }
+
+  function scoreHtml(domain, subjectId) {
+    var s = scoreOf(domain, subjectId);
+    if (!s.total) return '<span class="count-hint">\u2014</span>';
+    var tone = s.ko ? (s.ok > s.ko ? 'mid' : 'bad') : (s.ok ? 'good' : 'todo');
+    return '<span class="score" data-tone="' + tone + '">' + s.ok + '/' + s.total + '</span>';
+  }
+
+  /**
+   * La tabla de candidatos: unas columnas propias, luego una por criterio.
+   * La usan los modelos de coche y la comparacion de pisos.
+   */
+  function checksGridHtml(domain, subjects, cols, subjAttr, delAttr) {
+    var crits = criteriaOf(domain);
+
+    var head = '<thead><tr>' +
+      cols.map(function (c) {
+        return '<th' + (c.width ? ' style="width:' + c.width + '"' : '') + '>' + esc(c.label) + '</th>';
+      }).join('') +
+      crits.map(function (c, i) {
+        return '<th class="th-crit" title="' + esc(c.detalle || '') + '">' + esc(critLabel(c, i)) +
+          (c.importancia === 'Haute' ? ' <span class="th-must">!</span>' : '') + '</th>';
+      }).join('') +
+      '<th style="width:62px">Score</th>' +
+      '<th style="width:44px"><span class="sr-only">Actions</span></th>' +
+    '</tr></thead>';
+
+    var body = subjects.map(function (s) {
+      return '<tr ' + subjAttr + '="' + esc(s.id) + '">' +
+        cols.map(function (c) {
+          return '<td data-label="' + esc(c.label) + '">' + c.html(s) + '</td>';
+        }).join('') +
+        crits.map(function (c, i) {
+          return '<td data-label="' + esc(critLabel(c, i)) + '">' +
+            selectHtml(VERDICTS, verdictOf(s.id, c.id), 'verdict', ' data-crit="' + esc(c.id) + '"') +
+          '</td>';
+        }).join('') +
+        '<td data-label="Score">' + scoreHtml(domain, s.id) + '</td>' +
+        '<td class="cell-actions"><button class="row-del" type="button" ' + delAttr + '="1" ' +
+          'aria-label="Retirer cette ligne">\u00d7</button></td>' +
+      '</tr>';
+    }).join('');
+
+    return '<div class="table-wrap table-wrap--wide"><table class="grid grid--compare">' +
+      head + '<tbody>' + body + '</tbody></table></div>';
+  }
+
+  /** Guarda un veredicto y refresca el score de esa fila, sin repintar todo. */
+  function saveVerdict(domain, subjectId, critId, value, td) {
+    var row = checkRow(domain, subjectId, critId);
+    row.verdict = value;
+    enqueue('check:' + row.id, 'upsertCheck', row);
+    var tr = td.closest('tr');
+    var cell = tr && tr.querySelector('[data-label="Score"]');
+    if (cell) cell.innerHTML = scoreHtml(domain, subjectId);
+  }
+
+
+  function renderChecks(domain) {
+    if (domain === 'veh') renderVehModels();
+    else renderHomeCompare();
+  }
+
+  // ============================================== 3b. modeles de voiture
+
+  function modelLabel(m, i) {
+    var t = [m.marca, m.modelo].filter(function (x) { return x && x.trim(); }).join(' ');
+    return t || 'Mod\u00e8le ' + (i + 1);
+  }
+
+  /** La photo del modelo es una URL: la hoja no guarda ficheros. */
+  function thumbHtml(url) {
+    var v = String(url || '').trim();
+    if (!v) return '<span class="thumb thumb--empty" aria-hidden="true">\u1f697</span>';
+    var safe = normalizeUrl(v);
+    return '<a class="thumb" href="' + esc(safe) + '" target="_blank" rel="noopener" ' +
+      'title="Ouvrir l\u2019image en grand">' +
+      '<img src="' + esc(safe) + '" alt="" loading="lazy" ' +
+      'onerror="this.parentNode.className=\'thumb thumb--broken\';this.remove();"></a>';
+  }
+
+  function renderVehModels() {
+    var rows = state.vehModels;
+    var box = $('veh-models');
+
+    if (!rows.length) {
+      box.innerHTML = '<p class="empty">Aucun mod\u00e8le. Ajoute ceux qui t\u2019int\u00e9ressent : ' +
+        'chaque crit\u00e8re de la section 2 devient une colonne.</p>';
+      $('veh-models-count').textContent = '';
+      return;
+    }
+
+    box.innerHTML = checksGridHtml('veh', rows, [
+      { label: 'Photo', width: '104px', html: function (m) {
+        return thumbHtml(m.imagen) +
+          '<input class="cell-sub-input" data-field="imagen" value="' + esc(m.imagen) +
+            '" placeholder="URL de l\u2019image" spellcheck="false">';
+      } },
+      { label: 'Mod\u00e8le', width: '190px', html: function (m) {
+        return '<input class="cell-input" data-field="marca" value="' + esc(m.marca) +
+            '" placeholder="Marque">' +
+          '<input class="cell-input" data-field="modelo" value="' + esc(m.modelo) +
+            '" placeholder="Mod\u00e8le">';
+      } },
+      { label: 'Motorisation', width: '130px', html: function (m) {
+        return '<input class="cell-input" data-field="motor" value="' + esc(m.motor) +
+            '" placeholder="Ex. : 1.2 essence">' +
+          '<input class="cell-sub-input" data-field="anos" value="' + esc(m.anos) +
+            '" placeholder="Ann\u00e9es vis\u00e9es">';
+      } },
+      { label: 'Budget', width: '116px', html: function (m) {
+        return '<div class="cell-pair">' +
+          '<input class="cell-input" data-field="precioMin" value="' + esc(m.precioMin) +
+            '" placeholder="min \u20ac" inputmode="numeric">' +
+          '<input class="cell-input" data-field="precioMax" value="' + esc(m.precioMax) +
+            '" placeholder="max \u20ac" inputmode="numeric">' +
+        '</div>';
+      } }
+    ], 'data-vmid', 'data-vmdel');
+
+    $('veh-models-count').textContent = rows.length +
+      (rows.length === 1 ? ' mod\u00e8le' : ' mod\u00e8les') + ' \u00b7 ' + criteriaOf('veh').length + ' crit\u00e8res';
+    autoGrowAll(box);
+  }
+
+  $('veh-models').addEventListener('input', function (e) {
+    var field = e.target.getAttribute('data-field');
+    if (!field) return;
+    var row = byId(state.vehModels, e.target.closest('tr').getAttribute('data-vmid'));
+    if (!row) return;
+    row[field] = e.target.value;
+    if (field === 'imagen') {
+      var cell = e.target.closest('td');
+      var old = cell.querySelector('.thumb');
+      var fresh = document.createElement('div');
+      fresh.innerHTML = thumbHtml(e.target.value);
+      if (old) cell.replaceChild(fresh.firstChild, old);
+    }
+    if (field === 'marca' || field === 'modelo') renderVehOffers();
+    enqueue('vmodel:' + row.id, 'upsertVehModel', row);
+  });
+
+  $('veh-models').addEventListener('change', function (e) {
+    var crit = e.target.getAttribute('data-crit');
+    if (!crit) return;
+    var id = e.target.closest('tr').getAttribute('data-vmid');
+    e.target.setAttribute('data-tone', toneOf(VERDICTS, e.target.value));
+    saveVerdict('veh', id, crit, e.target.value, e.target.closest('td'));
+  });
+
+  $('veh-models').addEventListener('click', function (e) {
+    if (!e.target.getAttribute('data-vmdel')) return;
+    var id = e.target.closest('tr').getAttribute('data-vmid');
+    var row = byId(state.vehModels, id);
+    if (!row) return;
+    var offers = state.vehOffers.filter(function (o) { return o.modelId === id; });
+    var msg = offers.length
+      ? 'Retirer \u00ab ' + modelLabel(row, 0) +' \u00bb et ses ' + offers.length + ' annonce(s) ?'
+      : 'Retirer ce mod\u00e8le ?';
+    if (!confirm(msg)) return;
+    var goneOffers = offers.map(function (o) { return o.id; });
+    state.vehModels = state.vehModels.filter(function (m) { return m.id !== id; });
+    state.vehOffers = state.vehOffers.filter(function (o) { return o.modelId !== id; });
+    state.inspections = state.inspections.filter(function (r) { return goneOffers.indexOf(r.offerId) < 0; });
+    state.checks = state.checks.filter(function (c) { return c.subjectId !== id; });
+    enqueue('vmodel-del:' + id, 'deleteVehModel', { id: id });
+    renderVehModels();
+    renderVehOffers();
+  });
+
+  $('veh-add-model').addEventListener('click', function () {
+    var row = {
+      id: uid(), profileId: state.profileId, position: nextPosition(state.vehModels),
+      marca: '', modelo: '', motor: '', anos: '', precioMin: '', precioMax: '',
+      imagen: '', notas: ''
+    };
+    state.vehModels.push(row);
+    enqueue('vmodel:' + row.id, 'upsertVehModel', row);
+    renderVehModels();
+    focusLast('#veh-models [data-field="marca"]');
+  });
+
+  // ================================================ 4. les annonces
+
+  function offersOf(domain) {
+    return state[DOM[domain].offers];
+  }
+
+  function offerLabel(o) {
+    return (o && o.titulo && o.titulo.trim()) || 'Annonce sans titre';
+  }
+
+  function inspectionsOf(domain, offerId) {
+    return state.inspections.filter(function (r) {
+      return r.domain === domain && r.offerId === offerId;
+    });
+  }
+
+  /**
+   * El contador del boton Fiche. Solo cuenta cuando ya se ha tocado algo: si
+   * no, todas las annonces llevarian \u00ab0/24\u00bb sin haber hecho nada.
+   */
+  function offerBadge(domain, o) {
+    if (!inspectionsOf(domain, o.id).length) return 0;
+    var items = inspectionItems(domain, o.id);
+    var done = items.filter(function (r) { return r.done === 'si'; }).length;
+    return items.length ? done + '/' + items.length : 0;
+  }
+
+  /** La barra de la seccion: filtro de lo oculto, igual que en el suivi. */
+  function renderOfferBar(domain) {
+    var rows = offersOf(domain);
+    var hidden = rows.filter(isHidden).length;
+    $(domain + '-bar').innerHTML =
+      '<button class="btn btn--primary btn--sm" type="button" data-add-offer="' + domain + '">' +
+        '+ Ajouter une annonce</button>' +
+      '<span class="topbar-spacer"></span>' +
+      (hidden ? '<button class="btn btn--ghost btn--sm" type="button" data-toggle-hidden-d="' + domain +
+        '" title="Les annonces refus\u00e9es ou \u00e9cart\u00e9es restent dans ta feuille, elles sont juste ' +
+        'masqu\u00e9es ici.">' + (showHidden ? 'Masquer' : 'Afficher') + ' les ' + hidden +
+        ' masqu\u00e9e' + (hidden === 1 ? '' : 's') + '</button>' : '');
+  }
+
+  function renderOfferStats(domain, cards) {
+    var box = $(domain + '-stats');
+    box.innerHTML = offersOf(domain).length ? cards.map(function (c) {
+      return '<div class="stat"><div class="stat-value">' + c.value + '</div>' +
+             '<div class="stat-label">' + esc(c.label) + '</div></div>';
+    }).join('') : '';
+  }
+
+  // ---------------------------------------------------- les voitures
+
+  function renderVehOffers() {
+    var all = state.vehOffers;
+    var rows = visibleApps(all);
+    var oculto = all.length - rows.length;
+
+    renderOfferBar('veh');
+    renderOfferStats('veh', vehCards());
+
+    var modelOptions = function (o) {
+      return '<select class="cell-select" data-field="modelId">' +
+        '<option value=""' + (o.modelId ? '' : ' selected') + '>\u2014 sans mod\u00e8le \u2014</option>' +
+        state.vehModels.map(function (m, i) {
+          return '<option value="' + esc(m.id) + '"' + (m.id === o.modelId ? ' selected' : '') + '>' +
+            esc(modelLabel(m, i)) + '</option>';
+        }).join('') + '</select>';
+    };
+
+    $('veh-offers').innerHTML = '<div class="table-wrap"><table class="grid">' +
+      '<thead><tr>' +
+        '<th style="width:10%">Vue le</th>' +
+        '<th style="width:24%">L\u2019annonce</th>' +
+        '<th style="width:14%">Mod\u00e8le</th>' +
+        '<th style="width:10%">Prix</th>' +
+        '<th style="width:12%">Km / ann\u00e9e</th>' +
+        '<th style="width:10%">\u00c9tat</th>' +
+        '<th style="width:13%">Statut</th>' +
+        '<th style="width:7%">Note</th>' +
+        '<th style="width:82px"><span class="sr-only">Actions</span></th>' +
+      '</tr></thead><tbody>' +
+      (rows.length ? rows.map(function (o) {
+        var mark = isHidden(o) ? ' class="is-masquee"' : '';
+        return '<tr data-void="' + esc(o.id) + '"' + mark + '>' +
+          '<td data-label="Vue le"><input class="cell-input" type="date" data-field="fecha" value="' +
+            esc(o.fecha) + '"></td>' +
+          '<td data-label="L\u2019annonce">' +
+            '<input class="cell-input" data-field="titulo" value="' + esc(o.titulo) +
+              '" placeholder="Ex. : Clio IV 1.2 \u2014 2016">' +
+            '<div class="cell-sub">' +
+              '<input class="cell-sub-input" data-field="enlace" value="' + esc(o.enlace) +
+                '" placeholder="Lien de l\u2019annonce" inputmode="url" spellcheck="false">' +
+              linkOutHtml(o.enlace) +
+            '</div>' +
+          '</td>' +
+          '<td data-label="Mod\u00e8le">' + modelOptions(o) + '</td>' +
+          '<td data-label="Prix"><input class="cell-input" data-field="precio" value="' +
+            esc(o.precio) + '" placeholder="\u20ac" inputmode="numeric"></td>' +
+          '<td data-label="Km / ann\u00e9e"><div class="cell-pair">' +
+            '<input class="cell-input" data-field="km" value="' + esc(o.km) +
+              '" placeholder="km" inputmode="numeric">' +
+            '<input class="cell-input" data-field="ano" value="' + esc(o.ano) +
+              '" placeholder="ann\u00e9e" inputmode="numeric">' +
+          '</div></td>' +
+          '<td data-label="\u00c9tat">' + selectHtml(ETATS_VEH, o.estadoVeh, 'estadoVeh') + '</td>' +
+          '<td data-label="Statut">' + selectHtml(VEH_STATUTS, o.estado, 'estado') + '</td>' +
+          '<td data-label="Note">' + selectHtml(NOTES, o.nota, 'nota') + '</td>' +
+          '<td class="cell-actions cell-actions--wide">' +
+            '<button class="btn-fiche" type="button" data-vofiche="1" ' +
+              'title="Ouvrir la fiche">Fiche' +
+              (offerBadge('veh', o) ? '<span class="fiche-badge">' + offerBadge('veh', o) +
+                '</span>' : '') + '</button>' +
+            '<button class="row-del" type="button" data-vodel="1" ' +
+              'aria-label="Retirer cette annonce">\u00d7</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('')
+        : '<tr><td colspan="9" data-label=""><p class="empty" style="margin:10px">' +
+          (oculto ? 'Rien \u00e0 afficher : ' + oculto + ' annonce(s) masqu\u00e9e(s) au-dessus.'
+                  : 'Aucune annonce pour l\u2019instant.') + '</p></td></tr>') +
+      '</tbody></table></div>';
+
+    autoGrowAll($('veh-offers'));
+  }
+
+  // ---------------------------------------------------- les logements
+
+  function homeRent(o) {
+    var a = Number(String(o.alquiler || '').replace(/[^\d.]/g, ''));
+    var c = Number(String(o.cargas || '').replace(/[^\d.]/g, ''));
+    if (isNaN(a) || !a) return null;
+    return a + (isNaN(c) ? 0 : c);
+  }
+
+  function renderHomeOffers() {
+    var all = state.homeOffers;
+    var rows = visibleApps(all);
+    var oculto = all.length - rows.length;
+
+    renderOfferBar('home');
+    renderOfferStats('home', homeCards());
+
+    $('home-offers').innerHTML = '<div class="table-wrap"><table class="grid">' +
+      '<thead><tr>' +
+        '<th style="width:10%">Vue le</th>' +
+        '<th style="width:26%">L\u2019annonce</th>' +
+        '<th style="width:13%">Loyer + charges</th>' +
+        '<th style="width:12%">Surface / pi\u00e8ces</th>' +
+        '<th style="width:12%">Qui loue</th>' +
+        '<th style="width:13%">Statut</th>' +
+        '<th style="width:7%">Note</th>' +
+        '<th style="width:82px"><span class="sr-only">Actions</span></th>' +
+      '</tr></thead><tbody>' +
+      (rows.length ? rows.map(function (o) {
+        var total = homeRent(o);
+        var mark = isHidden(o) ? ' class="is-masquee"' : '';
+        return '<tr data-hoid="' + esc(o.id) + '"' + mark + '>' +
+          '<td data-label="Vue le"><input class="cell-input" type="date" data-field="fecha" value="' +
+            esc(o.fecha) + '"></td>' +
+          '<td data-label="L\u2019annonce">' +
+            '<input class="cell-input" data-field="titulo" value="' + esc(o.titulo) +
+              '" placeholder="Ex. : T2 45 m\u00b2 Krutenau">' +
+            '<div class="cell-sub">' +
+              '<input class="cell-sub-input" data-field="enlace" value="' + esc(o.enlace) +
+                '" placeholder="Lien de l\u2019annonce" inputmode="url" spellcheck="false">' +
+              linkOutHtml(o.enlace) +
+            '</div>' +
+          '</td>' +
+          '<td data-label="Loyer + charges"><div class="cell-pair">' +
+            '<input class="cell-input" data-field="alquiler" value="' + esc(o.alquiler) +
+              '" placeholder="loyer \u20ac" inputmode="numeric">' +
+            '<input class="cell-input" data-field="cargas" value="' + esc(o.cargas) +
+              '" placeholder="charges \u20ac" inputmode="numeric">' +
+          '</div>' + (total ? '<span class="cell-total">= ' + total + ' \u20ac</span>' : '') + '</td>' +
+          '<td data-label="Surface / pi\u00e8ces"><div class="cell-pair">' +
+            '<input class="cell-input" data-field="superficie" value="' + esc(o.superficie) +
+              '" placeholder="m\u00b2" inputmode="numeric">' +
+            '<input class="cell-input" data-field="piezas" value="' + esc(o.piezas) +
+              '" placeholder="pi\u00e8ces" inputmode="numeric">' +
+          '</div></td>' +
+          '<td data-label="Qui loue">' + selectHtml(VENDEURS_HOME, o.tipoVendedor, 'tipoVendedor') + '</td>' +
+          '<td data-label="Statut">' + selectHtml(HOME_STATUTS, o.estado, 'estado') + '</td>' +
+          '<td data-label="Note">' + selectHtml(NOTES, o.nota, 'nota') + '</td>' +
+          '<td class="cell-actions cell-actions--wide">' +
+            '<button class="btn-fiche" type="button" data-hofiche="1" title="Ouvrir la fiche">Fiche' +
+              (offerBadge('home', o) ? '<span class="fiche-badge">' + offerBadge('home', o) +
+                '</span>' : '') + '</button>' +
+            '<button class="row-del" type="button" data-hodel="1" ' +
+              'aria-label="Retirer cette annonce">\u00d7</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('')
+        : '<tr><td colspan="8" data-label=""><p class="empty" style="margin:10px">' +
+          (oculto ? 'Rien \u00e0 afficher : ' + oculto + ' annonce(s) masqu\u00e9e(s) au-dessus.'
+                  : 'Aucune annonce pour l\u2019instant.') + '</p></td></tr>') +
+      '</tbody></table></div>';
+
+    autoGrowAll($('home-offers'));
+  }
+
+  function renderHomeCompare() {
+    var rows = visibleApps(state.homeOffers);
+    var box = $('home-compare');
+    if (!rows.length) {
+      box.innerHTML = '<p class="empty">Les annonces appara\u00eetront ici, une colonne par crit\u00e8re.</p>';
+      return;
+    }
+    box.innerHTML = checksGridHtml('home', rows, [
+      { label: 'L\u2019annonce', width: '200px', html: function (o) {
+        return '<button class="link-btn" type="button" data-open-home="' + esc(o.id) + '">' +
+          esc(offerLabel(o)) + '</button>';
+      } },
+      { label: 'Loyer', width: '90px', html: function (o) {
+        var t = homeRent(o);
+        return '<span class="cell-plain">' + (t ? t + ' \u20ac' : '\u2014') + '</span>';
+      } },
+      { label: 'Surface', width: '84px', html: function (o) {
+        return '<span class="cell-plain">' + (o.superficie ? esc(o.superficie) + ' m\u00b2' : '\u2014') +
+          (o.piezas ? ' \u00b7 T' + esc(o.piezas) : '') + '</span>';
+      } }
+    ], 'data-hoid', 'data-hodel-c');
+  }
+
+  // ------------------------------------------- listeners de las dos tablas
+
+  /** Un solo juego para las dos tablas de anuncios y la comparacion. */
+  function wireOffers(domain, boxId, attr, fiche, del) {
+    var box = $(boxId);
+    var conf = DOM[domain];
+    var openDetailFor = domain === 'veh' ? openVehOffer : openHomeOffer;
+
+    box.addEventListener('input', function (e) {
+      var field = e.target.getAttribute('data-field');
+      if (!field) return;
+      var row = byId(offersOf(domain), e.target.closest('tr').getAttribute(attr));
+      if (!row) return;
+      row[field] = e.target.value;
+      if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
+      if (field === 'enlace') refreshLinkOut(e.target);
+      if (domain === 'home' && (field === 'alquiler' || field === 'cargas' ||
+          field === 'titulo' || field === 'superficie' || field === 'piezas')) {
+        renderHomeCompare();
+        if (field === 'titulo' || field === 'alquiler') syncHomeMarkers();
+      }
+      enqueue('offer:' + row.id, conf.action, row);
+    });
+
+    box.addEventListener('change', function (e) {
+      var field = e.target.getAttribute('data-field');
+      var crit = e.target.getAttribute('data-crit');
+      var tr = e.target.closest('tr');
+
+      if (crit) {
+        e.target.setAttribute('data-tone', toneOf(VERDICTS, e.target.value));
+        return saveVerdict(domain, tr.getAttribute(attr), crit, e.target.value, e.target.closest('td'));
+      }
+      if (!field || e.target.tagName !== 'SELECT') return;
+
+      var row = byId(offersOf(domain), tr.getAttribute(attr));
+      if (!row) return;
+      row[field] = e.target.value;
+      enqueue('offer:' + row.id, conf.action, row);
+
+      if (field === 'estado') {
+        if (isHidden(row) && !showHidden) return renderDomain(domain);
+        e.target.setAttribute('data-tone', toneOf(conf.statuts, e.target.value));
+        tr.className = isHidden(row) ? 'is-masquee' : '';
+        return renderDomain(domain, true);
+      }
+      var lists = { nota: NOTES, estadoVeh: ETATS_VEH, tipoVendedor:
+        domain === 'veh' ? VENDEURS_VEH : VENDEURS_HOME, muebles: MEUBLES, dpe: DPE };
+      if (lists[field]) e.target.setAttribute('data-tone', toneOf(lists[field], e.target.value));
+      if (field === 'modelId') renderVehOffers();
+    });
+
+    box.addEventListener('click', function (e) {
+      var open = e.target.closest('[data-open-home]');
+      if (open) return openHomeOffer(open.getAttribute('data-open-home'));
+
+      var f = e.target.closest('[' + fiche + ']');
+      if (f) return openDetailFor(f.closest('tr').getAttribute(attr));
+
+      if (!e.target.getAttribute(del)) return;
+      var id = e.target.closest('tr').getAttribute(attr);
+      var row = byId(offersOf(domain), id);
+      if (!row) return;
+      if (!confirm('Retirer \u00ab ' + offerLabel(row) + ' \u00bb et tout son d\u00e9tail ?')) return;
+      state[conf.offers] = offersOf(domain).filter(function (o) { return o.id !== id; });
+      state.inspections = state.inspections.filter(function (r) { return r.offerId !== id; });
+      state.checks = state.checks.filter(function (c) { return c.subjectId !== id; });
+      enqueue('offer-del:' + id, conf.delAction, { id: id });
+      renderDomain(domain);
+    });
+  }
+
+  /** Repinta un dominio entero (o solo sus cifras, si nada ha desaparecido). */
+  function renderDomain(domain, onlyCounts) {
+    if (domain === 'veh') {
+      if (onlyCounts) return renderOfferStats('veh', vehCards());
+      renderVehOffers();
+    } else {
+      if (onlyCounts) return renderOfferStats('home', homeCards());
+      renderHomeOffers();
+      renderHomeCompare();
+      syncHomeMarkers();
+    }
+  }
+
+  function vehCards() {
+    var all = state.vehOffers;
+    return [
+      { value: all.length, label: all.length === 1 ? 'annonce' : 'annonces' },
+      { value: all.filter(function (o) { return o.estado && o.estado !== ST_ECARTEE &&
+          o.estado !== 'Refus\u00e9e'; }).length, label: 'contact\u00e9es' },
+      { value: all.filter(function (o) { return o.estado === 'Essai pr\u00e9vu' ||
+          o.estado === 'Essay\u00e9e'; }).length, label: 'essais' },
+      { value: all.filter(function (o) { return Number(o.nota) >= 8; }).length, label: 'coups de c\u0153ur' }
+    ];
+  }
+
+  function homeCards() {
+    var all = state.homeOffers;
+    return [
+      { value: all.length, label: all.length === 1 ? 'annonce' : 'annonces' },
+      { value: all.filter(function (o) { return o.estado && o.estado !== ST_ECARTEE &&
+          o.estado !== 'Refus\u00e9e'; }).length, label: 'contact\u00e9es' },
+      { value: all.filter(function (o) { return o.estado === 'Visite pr\u00e9vue' ||
+          o.estado === 'Visit\u00e9e'; }).length, label: 'visites' },
+      { value: all.filter(function (o) { return Number(o.nota) >= 8; }).length, label: 'coups de c\u0153ur' }
+    ];
+  }
+
+  document.addEventListener('click', function (e) {
+    var add = e.target.getAttribute('data-add-offer');
+    if (add) return addOffer(add);
+    var tg = e.target.getAttribute('data-toggle-hidden-d');
+    if (tg) { showHidden = !showHidden; renderTracking(); renderDomain(tg); }
+  });
+
+  function addOffer(domain) {
+    var row;
+    if (domain === 'veh') {
+      row = {
+        id: uid(), profileId: state.profileId, modelId: '',
+        position: nextPosition(state.vehOffers), fecha: today(), titulo: '', vendedor: '',
+        tipoVendedor: '', precio: '', km: '', ano: '', estadoVeh: '', controlTecnico: '',
+        enlace: '', telefono: '', ubicacion: '', estado: '', nota: '', notaComentario: '',
+        proximaAccion: ''
+      };
+      state.vehOffers.push(row);
+    } else {
+      row = {
+        id: uid(), profileId: state.profileId, position: nextPosition(state.homeOffers),
+        fecha: today(), titulo: '', agencia: '', tipoVendedor: '', alquiler: '', cargas: '',
+        superficie: '', piezas: '', planta: '', muebles: '', dpe: '', disponible: '',
+        enlace: '', telefono: '', ubicacion: '', lat: '', lon: '', estado: '', nota: '',
+        notaComentario: '', proximaAccion: ''
+      };
+      state.homeOffers.push(row);
+    }
+    enqueue('offer:' + row.id, DOM[domain].action, row);
+    renderDomain(domain);
+    focusLast('#' + domain + '-offers [data-field="titulo"]');
+  }
+
+
+  // ====================================== 5. les listes de verification
+
+  /**
+   * Los puntos a revisar de una oferta. Mientras no se toque nada, la lista
+   * es la del catalogo y no ocupa ni una fila en la hoja; en cuanto se marca
+   * algo, se guarda entera de una vez (asi el orden y los borrados funcionan).
+   */
+  function inspectionItems(domain, offerId) {
+    var saved = {};
+    inspectionsOf(domain, offerId).forEach(function (r) { saved[r.id] = r; });
+
+    var items = [];
+    INSPECTIONS[domain].forEach(function (text, i) {
+      var id = offerId + '::' + i;
+      var row = saved[id];
+      delete saved[id];
+      // Fila guardada con el texto vacio = punto que el usuario ha quitado.
+      if (row && !String(row.item).trim()) return;
+      items.push(row || { id: id, item: text, done: '', nota: '', isVirtual: true });
+    });
+    // Los puntos anadidos a mano van al final.
+    Object.keys(saved).forEach(function (k) { items.push(saved[k]); });
+    return items;
+  }
+
+  function cleanInspection(domain, offerId, id, item, position) {
+    return {
+      id: id, profileId: state.profileId, domain: domain, offerId: offerId,
+      position: position, item: item, done: '', nota: ''
+    };
+  }
+
+  /**
+   * Materializa la lista del catalogo antes del primer cambio. Se manda de
+   * golpe (una peticion), con el cambio del usuario ya aplicado dentro: asi
+   * ninguna escritura pisa a la otra.
+   */
+  function ensureInspections(domain, offerId, apply) {
+    var rows = [];
+    inspectionItems(domain, offerId).forEach(function (r, i) {
+      if (!r.isVirtual) return;
+      var row = cleanInspection(domain, offerId, r.id, r.item, (i + 1) * 10);
+      state.inspections.push(row);
+      rows.push(row);
+    });
+    if (!rows.length) return apply();
+
+    apply();   // el cambio del usuario entra antes de mandar el lote
+    api('importRows', { table: 'Inspections', rows: rows }).catch(function (err) {
+      showBanner('app-error', 'La liste de contr\u00f4le n\u2019a pas pu \u00eatre enregistr\u00e9e : ' + err.message);
+    });
+  }
+
+  function renderInspections(domain, offerId, boxId) {
+    var items = inspectionItems(domain, offerId);
+    var virgen = !inspectionsOf(domain, offerId).length;
+    var done = items.filter(function (r) { return r.done === 'si'; }).length;
+
+    $(boxId).innerHTML =
+      '<p class="md-hint">' + (virgen
+        ? 'Liste type : ' + items.length + ' points. Coche ce que tu as v\u00e9rifi\u00e9 \u2014 ' +
+          'elle s\u2019enregistre dans ta feuille d\u00e8s la premi\u00e8re case.'
+        : done + ' / ' + items.length + ' v\u00e9rifi\u00e9s') + '</p>' +
+      '<ul class="insp">' + items.map(function (r) {
+        return '<li class="insp-item' + (r.done === 'si' ? ' is-done' : '') +
+            '" data-inspid="' + esc(r.id) + '">' +
+          '<input class="insp-check" type="checkbox" data-insp="done"' +
+            (r.done === 'si' ? ' checked' : '') + ' aria-label="V\u00e9rifi\u00e9">' +
+          '<div class="insp-main">' +
+            '<textarea class="insp-text" data-insp="item" rows="1">' + esc(r.item) + '</textarea>' +
+            '<input class="insp-note" data-insp="nota" value="' + esc(r.nota) +
+              '" placeholder="Ce que le vendeur a r\u00e9pondu\u2026">' +
+          '</div>' +
+          '<button class="row-del" type="button" data-inspdel="1" ' +
+            'aria-label="Retirer ce point">\u00d7</button>' +
+        '</li>';
+      }).join('') + '</ul>' +
+      '<button class="btn btn--sm" type="button" data-inspadd="' + domain + '">+ Ajouter un point</button>';
+
+    autoGrowAll($(boxId));
+  }
+
+  /**
+   * Los tres listeners de una lista de revision. Se enganchan al cuerpo del
+   * modal (wireBoxId), que existe desde el principio; la lista misma
+   * (renderBoxId) solo aparece al abrir una ficha, asi que engancharse a ella
+   * al arrancar dejaba la pagina entera sin funcionar.
+   */
+  function wireInspections(domain, wireBoxId, renderBoxId, getOfferId, afterChange) {
+    var box = $(wireBoxId);
+
+    box.addEventListener('input', function (e) {
+      var field = e.target.getAttribute('data-insp');
+      if (!field || field === 'done') return;
+      var li = e.target.closest('[data-inspid]');
+      var id = li.getAttribute('data-inspid');
+      var offerId = getOfferId();
+      if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
+      ensureInspections(domain, offerId, function () {
+        var row = byId(state.inspections, id);
+        if (!row) return;
+        row[field] = e.target.value;
+        if (inspectionsOf(domain, offerId).length) {
+          enqueue('insp:' + row.id, 'upsertInspection', row);
+        }
+      });
+    });
+
+    box.addEventListener('change', function (e) {
+      if (e.target.getAttribute('data-insp') !== 'done') return;
+      var li = e.target.closest('[data-inspid]');
+      var id = li.getAttribute('data-inspid');
+      var checked = e.target.checked;
+      var offerId = getOfferId();
+      li.classList.toggle('is-done', checked);
+      var recien = !inspectionsOf(domain, offerId).length;
+      ensureInspections(domain, offerId, function () {
+        var row = byId(state.inspections, id);
+        if (!row) return;
+        row.done = checked ? 'si' : '';
+        if (!recien) enqueue('insp:' + row.id, 'upsertInspection', row);
+      });
+      renderInspections(domain, offerId, renderBoxId);
+      if (afterChange) afterChange();
+    });
+
+    box.addEventListener('click', function (e) {
+      var addFor = e.target.getAttribute('data-inspadd');
+      if (addFor) {
+        var offerId = getOfferId();
+        return ensureInspections(domain, offerId, function () {
+          var row = cleanInspection(domain, offerId, uid(), '',
+            nextPosition(inspectionsOf(domain, offerId)));
+          state.inspections.push(row);
+          enqueue('insp:' + row.id, 'upsertInspection', row);
+          renderInspections(domain, offerId, renderBoxId);
+          focusLast('#' + renderBoxId + ' [data-insp="item"]');
+        });
+      }
+
+      if (!e.target.getAttribute('data-inspdel')) return;
+      var li = e.target.closest('[data-inspid]');
+      var delId = li.getAttribute('data-inspid');
+      var oid = getOfferId();
+      var esDelCatalogo = delId.indexOf(oid + '::') === 0;
+
+      ensureInspections(domain, oid, function () {
+        if (esDelCatalogo) {
+          // No se borra la fila: se le vacia el texto. Si se borrara, el punto
+          // volveria a aparecer desde el catalogo en el siguiente repintado.
+          var row = byId(state.inspections, delId);
+          if (!row) return;
+          row.item = '';
+          row.done = '';
+          enqueue('insp:' + row.id, 'upsertInspection', row);
+        } else {
+          state.inspections = state.inspections.filter(function (r) { return r.id !== delId; });
+          enqueue('insp-del:' + delId, 'deleteInspection', { id: delId });
+        }
+      });
+      renderInspections(domain, oid, renderBoxId);
+      if (afterChange) afterChange();
+    });
+  }
+
+  // ======================================== 6. la fiche d'une voiture
+
+  var openVehId = null;
+
+  function vehModelOf(o) {
+    return o.modelId ? byId(state.vehModels, o.modelId) : null;
+  }
+
+  function telHtml(value) {
+    var v = String(value || '').replace(/\s+/g, '');
+    if (!v) return '';
+    return ' <a class="link-out" href="tel:' + esc(v) + '" title="Appeler">\u1f4de</a>';
+  }
+
+  function openVehOffer(id) {
+    var o = byId(state.vehOffers, id);
+    if (!o) return;
+    openVehId = id;
+
+    var m = vehModelOf(o);
+    $('veh-modal-title').textContent = offerLabel(o);
+    $('veh-modal-sub').textContent = [m ? modelLabel(m, 0) : '', o.precio ? o.precio + ' \u20ac' : '',
+      o.km ? o.km + ' km' : '', o.ano].filter(Boolean).join(' \u00b7 ') || 'Annonce de voiture';
+
+    $('veh-modal-body').innerHTML =
+      '<section class="md-block">' +
+        '<h3 class="md-h">L\u2019annonce</h3>' +
+        '<div class="md-grid">' +
+          fieldBlock('Prix demand\u00e9', '<input class="input" data-vo="precio" value="' +
+            esc(o.precio) + '" placeholder="\u20ac" inputmode="numeric">') +
+          fieldBlock('Kilom\u00e9trage', '<input class="input" data-vo="km" value="' + esc(o.km) +
+            '" placeholder="km" inputmode="numeric">') +
+          fieldBlock('Ann\u00e9e', '<input class="input" data-vo="ano" value="' + esc(o.ano) +
+            '" placeholder="Ex. : 2016" inputmode="numeric">') +
+          fieldBlock('Neuf ou occasion',
+            selectHtml(ETATS_VEH, o.estadoVeh, 'estadoVeh', ' data-vo-sel="estadoVeh"')) +
+          fieldBlock('Qui vend',
+            selectHtml(VENDEURS_VEH, o.tipoVendedor, 'tipoVendedor', ' data-vo-sel="tipoVendedor"')) +
+          fieldBlock('Nom du vendeur', '<input class="input" data-vo="vendedor" value="' +
+            esc(o.vendedor) + '" placeholder="Nom, ou nom du garage">') +
+          fieldBlock('T\u00e9l\u00e9phone', '<input class="input" data-vo="telefono" value="' +
+            esc(o.telefono) + '" placeholder="06\u2026" inputmode="tel">') +
+          fieldBlock('Contr\u00f4le technique', '<input class="input" data-vo="controlTecnico" value="' +
+            esc(o.controlTecnico) + '" placeholder="Ex. : fait 03/2026, sans remarque">') +
+          fieldBlock('Statut', selectHtml(VEH_STATUTS, o.estado, 'estado', ' data-vo-sel="estado"')) +
+          fieldBlock('Note globale', selectHtml(NOTES, o.nota, 'nota', ' data-vo-sel="nota"')) +
+        '</div>' +
+        fieldBlock('Lien de l\u2019annonce', '<input class="input" data-vo="enlace" value="' +
+          esc(o.enlace) + '" placeholder="https://\u2026" spellcheck="false">') +
+        fieldBlock('O\u00f9 la voir', '<input class="input" data-vo="ubicacion" value="' +
+          esc(o.ubicacion) + '" placeholder="Ville, quartier, garage\u2026">') +
+        fieldBlock('Pourquoi cette note', '<textarea class="input" data-vo="notaComentario" rows="2" ' +
+          'placeholder="Ex. : bon prix, mais la distribution n\u2019a jamais \u00e9t\u00e9 faite">' +
+          esc(o.notaComentario) + '</textarea>') +
+        fieldBlock('Prochaine action', '<input class="input" data-vo="proximaAccion" value="' +
+          esc(o.proximaAccion) + '" placeholder="Ex. : demander l\u2019Histovec">') +
+      '</section>' +
+
+      '<section class="md-block" id="veh-check-block"></section>';
+
+    renderVehCheckBlock(o);
+    $('veh-modal').hidden = false;
+    document.body.classList.add('modal-open');
+    autoGrowAll($('veh-modal-body'));
+    updateVehFoot(o);
+  }
+
+  /** El bloque de abajo depende de si el coche es nuevo o de segunda mano. */
+  function renderVehCheckBlock(o) {
+    var box = $('veh-check-block');
+
+    if (o.estadoVeh === 'Occasion') {
+      box.innerHTML = '<h3 class="md-h">\u00c0 v\u00e9rifier avant d\u2019acheter</h3>' +
+        '<div id="veh-insp"></div>';
+      renderInspections('veh', o.id, 'veh-insp');
+      return;
+    }
+
+    if (o.estadoVeh === 'Neuf') {
+      box.innerHTML = '<h3 class="md-h">Neuf : ce qui se n\u00e9gocie</h3>' +
+        '<ul class="md-list">' +
+          '<li>La <strong>remise</strong> : compare le m\u00eame mod\u00e8le chez un mandataire avant de signer.</li>' +
+          '<li>Le <strong>d\u00e9lai de livraison</strong> par \u00e9crit, et ce qui se passe s\u2019il d\u00e9borde.</li>' +
+          '<li>Les <strong>options</strong> : lesquelles sont vraiment utiles, lesquelles se revendent.</li>' +
+          '<li>La <strong>reprise</strong> de l\u2019ancienne voiture, chiffr\u00e9e s\u00e9par\u00e9ment du prix.</li>' +
+          '<li>Le <strong>financement</strong> : le taux du concessionnaire contre celui de ta banque.</li>' +
+          '<li>La <strong>garantie</strong> et ce qu\u2019elle couvre exactement, entretien inclus ou pas.</li>' +
+        '</ul>';
+      return;
+    }
+
+    box.innerHTML = '<h3 class="md-h">Neuf ou occasion ?</h3>' +
+      '<p class="empty" style="margin:0">Choisis <strong>neuf</strong> ou <strong>occasion</strong> ' +
+      'plus haut : pour une occasion, la liste de tout ce qu\u2019il faut demander au vendeur ' +
+      'appara\u00eet ici.</p>';
+  }
+
+  function updateVehFoot(o) {
+    // Se cuenta sobre la lista que se ve, no sobre las filas ya guardadas.
+    var items = o.estadoVeh === 'Occasion' ? inspectionItems('veh', o.id) : [];
+    var done = items.filter(function (r) { return r.done === 'si'; }).length;
+    $('veh-modal-foot').textContent = items.length
+      ? done + ' / ' + items.length + ' points v\u00e9rifi\u00e9s' : '';
+  }
+
+  function closeVehOffer() {
+    $('veh-modal').hidden = true;
+    if ($('modal').hidden && $('ai-modal').hidden && $('home-modal').hidden) {
+      document.body.classList.remove('modal-open');
+    }
+    openVehId = null;
+    renderVehOffers();
+  }
+
+  $('veh-modal').addEventListener('click', function (e) {
+    if (e.target.closest('[data-close-veh]')) closeVehOffer();
+  });
+
+  $('veh-modal-body').addEventListener('input', function (e) {
+    var field = e.target.getAttribute('data-vo');
+    if (!field) return;
+    var o = byId(state.vehOffers, openVehId);
+    if (!o) return;
+    o[field] = e.target.value;
+    if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
+    enqueue('offer:' + o.id, 'upsertVehOffer', o);
+  });
+
+  $('veh-modal-body').addEventListener('change', function (e) {
+    var field = e.target.getAttribute('data-vo-sel');
+    if (!field) return;
+    var o = byId(state.vehOffers, openVehId);
+    if (!o) return;
+    o[field] = e.target.value;
+    var lists = { estadoVeh: ETATS_VEH, tipoVendedor: VENDEURS_VEH, estado: VEH_STATUTS, nota: NOTES };
+    e.target.setAttribute('data-tone', toneOf(lists[field] || NOTES, e.target.value));
+    enqueue('offer:' + o.id, 'upsertVehOffer', o);
+    if (field === 'estadoVeh') renderVehCheckBlock(o);
+  });
+
+  wireInspections('veh', 'veh-modal-body', 'veh-insp', function () { return openVehId; }, function () {
+    var o = byId(state.vehOffers, openVehId);
+    if (o) updateVehFoot(o);
+  });
+
+  // ======================================= 7. la fiche d'un logement
+
+  var openHomeId = null;
+  var homeMap = null, homeMarker = null;
+  var homeAllMap = null, homeMarkers = {}, homeFitKey = '', homeHl = null;
+
+  function openHomeOffer(id) {
+    var o = byId(state.homeOffers, id);
+    if (!o) return;
+    openHomeId = id;
+
+    var total = homeRent(o);
+    $('home-modal-title').textContent = offerLabel(o);
+    $('home-modal-sub').textContent = [total ? total + ' \u20ac charges comprises' : '',
+      o.superficie ? o.superficie + ' m\u00b2' : '', o.piezas ? 'T' + o.piezas : '',
+      o.muebles].filter(Boolean).join(' \u00b7 ') || 'Annonce de logement';
+
+    $('home-modal-body').innerHTML =
+      '<section class="md-block">' +
+        '<h3 class="md-h">L\u2019annonce</h3>' +
+        '<div class="md-grid">' +
+          fieldBlock('Loyer hors charges', '<input class="input" data-ho="alquiler" value="' +
+            esc(o.alquiler) + '" placeholder="\u20ac" inputmode="numeric">') +
+          fieldBlock('Charges', '<input class="input" data-ho="cargas" value="' + esc(o.cargas) +
+            '" placeholder="\u20ac" inputmode="numeric">') +
+          fieldBlock('Surface', '<input class="input" data-ho="superficie" value="' +
+            esc(o.superficie) + '" placeholder="m\u00b2" inputmode="numeric">') +
+          fieldBlock('Nombre de pi\u00e8ces', '<input class="input" data-ho="piezas" value="' +
+            esc(o.piezas) + '" placeholder="Ex. : 2" inputmode="numeric">') +
+          fieldBlock('\u00c9tage', '<input class="input" data-ho="planta" value="' + esc(o.planta) +
+            '" placeholder="Ex. : 3e avec ascenseur">') +
+          fieldBlock('Meubl\u00e9',
+            selectHtml(MEUBLES, o.muebles, 'muebles', ' data-ho-sel="muebles"')) +
+          fieldBlock('DPE', selectHtml(DPE, o.dpe, 'dpe', ' data-ho-sel="dpe"')) +
+          fieldBlock('Libre \u00e0 partir de', '<input class="input" data-ho="disponible" value="' +
+            esc(o.disponible) + '" placeholder="Ex. : 1er octobre">') +
+          fieldBlock('Qui loue',
+            selectHtml(VENDEURS_HOME, o.tipoVendedor, 'tipoVendedor', ' data-ho-sel="tipoVendedor"')) +
+          fieldBlock('Agence ou contact', '<input class="input" data-ho="agencia" value="' +
+            esc(o.agencia) + '" placeholder="Nom">') +
+          fieldBlock('T\u00e9l\u00e9phone', '<input class="input" data-ho="telefono" value="' +
+            esc(o.telefono) + '" placeholder="06\u2026" inputmode="tel">') +
+          fieldBlock('Statut', selectHtml(HOME_STATUTS, o.estado, 'estado', ' data-ho-sel="estado"')) +
+          fieldBlock('Note globale', selectHtml(NOTES, o.nota, 'nota', ' data-ho-sel="nota"')) +
+        '</div>' +
+        fieldBlock('Lien de l\u2019annonce', '<input class="input" data-ho="enlace" value="' +
+          esc(o.enlace) + '" placeholder="https://\u2026" spellcheck="false">') +
+        fieldBlock('Pourquoi cette note', '<textarea class="input" data-ho="notaComentario" rows="2" ' +
+          'placeholder="Ex. : tr\u00e8s lumineux, mais loin du tram">' +
+          esc(o.notaComentario) + '</textarea>') +
+        fieldBlock('Prochaine action', '<input class="input" data-ho="proximaAccion" value="' +
+          esc(o.proximaAccion) + '" placeholder="Ex. : rappeler l\u2019agence mardi">') +
+      '</section>' +
+
+      '<section class="md-block">' +
+        '<h3 class="md-h">O\u00f9 c\u2019est</h3>' +
+        '<div class="md-geo">' +
+          '<input class="input" id="home-address" value="' + esc(o.ubicacion) +
+            '" placeholder="Adresse ou quartier, puis \u00ab Chercher \u00bb">' +
+          '<button class="btn btn--sm" type="button" id="home-geocode">Chercher</button>' +
+        '</div>' +
+        '<p class="md-hint" id="home-geo-hint"></p>' +
+        '<div id="home-fiche-map" class="md-map"></div>' +
+      '</section>' +
+
+      '<section class="md-block">' +
+        '<h3 class="md-h">Mes crit\u00e8res</h3>' +
+        '<div id="home-crit-list"></div>' +
+      '</section>' +
+
+      '<section class="md-block">' +
+        '<h3 class="md-h">\u00c0 demander et v\u00e9rifier pendant la visite</h3>' +
+        '<div id="home-insp"></div>' +
+      '</section>';
+
+    renderHomeCritList(o);
+    renderInspections('home', o.id, 'home-insp');
+
+    $('home-modal').hidden = false;
+    document.body.classList.add('modal-open');
+    autoGrowAll($('home-modal-body'));
+    initHomeFicheMap(o);
+    updateHomeFoot(o);
+
+    $('home-geocode').addEventListener('click', geocodeHome);
+    $('home-address').addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); geocodeHome(); }
+    });
+    $('home-address').addEventListener('input', function () {
+      var row = byId(state.homeOffers, openHomeId);
+      if (!row) return;
+      row.ubicacion = $('home-address').value;
+      enqueue('offer:' + row.id, 'upsertHomeOffer', row);
+    });
+  }
+
+  /** Los criterios de la seccion 2, uno por linea, para esta oferta. */
+  function renderHomeCritList(o) {
+    var crits = criteriaOf('home');
+    if (!crits.length) {
+      $('home-crit-list').innerHTML = '<p class="empty" style="margin:0">Aucun crit\u00e8re pour ' +
+        'l\u2019instant : ajoute-les dans la section 2 et ils appara\u00eetront ici.</p>';
+      return;
+    }
+    var s = scoreOf('home', o.id);
+    $('home-crit-list').innerHTML =
+      '<p class="md-hint">' + s.ok + ' sur ' + s.total + ' crit\u00e8res remplis' +
+        (s.ko ? ' \u00b7 ' + s.ko + ' non' : '') + '</p>' +
+      crits.map(function (c, i) {
+        return '<div class="md-row md-critrow" data-critid="' + esc(c.id) + '">' +
+          '<div class="md-row-main">' +
+            '<span class="md-critname">' + esc(critLabel(c, i)) +
+              (c.importancia === 'Haute' ? ' <span class="th-must">!</span>' : '') + '</span>' +
+            (c.detalle ? '<span class="md-critdet">' + esc(c.detalle) + '</span>' : '') +
+          '</div>' +
+          '<div class="md-row-side">' +
+            selectHtml(VERDICTS, verdictOf(o.id, c.id), 'verdict', ' data-hcrit="1"') +
+          '</div>' +
+        '</div>';
+      }).join('');
+  }
+
+  function updateHomeFoot(o) {
+    var insp = inspectionItems('home', o.id);
+    var done = insp.filter(function (r) { return r.done === 'si'; }).length;
+    var s = scoreOf('home', o.id);
+    $('home-modal-foot').textContent = [
+      s.total ? s.ok + '/' + s.total + ' crit\u00e8res' : '',
+      insp.length ? done + '/' + insp.length + ' points de visite' : ''
+    ].filter(Boolean).join(' \u00b7 ');
+  }
+
+  function closeHomeOffer() {
+    if (homeMap) { homeMap.remove(); homeMap = null; homeMarker = null; }
+    $('home-modal').hidden = true;
+    if ($('modal').hidden && $('ai-modal').hidden && $('veh-modal').hidden) {
+      document.body.classList.remove('modal-open');
+    }
+    openHomeId = null;
+    renderHomeOffers();
+    renderHomeCompare();
+    syncHomeMarkers();
+  }
+
+  $('home-modal').addEventListener('click', function (e) {
+    if (e.target.closest('[data-close-home]')) closeHomeOffer();
+  });
+
+  $('home-modal-body').addEventListener('input', function (e) {
+    var field = e.target.getAttribute('data-ho');
+    if (!field) return;
+    var o = byId(state.homeOffers, openHomeId);
+    if (!o) return;
+    o[field] = e.target.value;
+    if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
+    enqueue('offer:' + o.id, 'upsertHomeOffer', o);
+  });
+
+  $('home-modal-body').addEventListener('change', function (e) {
+    var hcrit = e.target.getAttribute('data-hcrit');
+    if (hcrit) {
+      var critId = e.target.closest('[data-critid]').getAttribute('data-critid');
+      var row = checkRow('home', openHomeId, critId);
+      row.verdict = e.target.value;
+      e.target.setAttribute('data-tone', toneOf(VERDICTS, e.target.value));
+      enqueue('check:' + row.id, 'upsertCheck', row);
+      var o2 = byId(state.homeOffers, openHomeId);
+      if (o2) { renderHomeCritList(o2); updateHomeFoot(o2); }
+      return;
+    }
+
+    var field = e.target.getAttribute('data-ho-sel');
+    if (!field) return;
+    var o = byId(state.homeOffers, openHomeId);
+    if (!o) return;
+    o[field] = e.target.value;
+    var lists = { muebles: MEUBLES, dpe: DPE, tipoVendedor: VENDEURS_HOME,
+                  estado: HOME_STATUTS, nota: NOTES };
+    e.target.setAttribute('data-tone', toneOf(lists[field] || NOTES, e.target.value));
+    enqueue('offer:' + o.id, 'upsertHomeOffer', o);
+  });
+
+  wireInspections('home', 'home-modal-body', 'home-insp', function () { return openHomeId; }, function () {
+    var o = byId(state.homeOffers, openHomeId);
+    if (o) updateHomeFoot(o);
+  });
+
+  // ------------------------------------------------- la carte du logement
+
+  function initHomeFicheMap(o) {
+    var box = $('home-fiche-map');
+    if (typeof L === 'undefined') {
+      box.innerHTML = '<p class="empty" style="margin:0">La carte n\u2019a pas pu se charger. ' +
+        'L\u2019adresse en texte est quand m\u00eame enregistr\u00e9e.</p>';
+      return;
+    }
+    var pt = hasPoint(o) ? [Number(o.lat), Number(o.lon)] : STRASBOURG;
+    homeMap = L.map(box, { scrollWheelZoom: false }).setView(pt, hasPoint(o) ? 15 : 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(homeMap);
+    if (hasPoint(o)) placeHomeMarker(pt[0], pt[1], false);
+    homeMap.on('click', function (e) { placeHomeMarker(e.latlng.lat, e.latlng.lng, true); });
+    setTimeout(function () { if (homeMap) homeMap.invalidateSize(); }, 60);
+  }
+
+  function placeHomeMarker(lat, lon, save) {
+    if (!homeMap) return;
+    if (homeMarker) {
+      homeMarker.setLatLng([lat, lon]);
+    } else {
+      homeMarker = L.marker([lat, lon], { draggable: true }).addTo(homeMap);
+      homeMarker.on('dragend', function () {
+        var p = homeMarker.getLatLng();
+        storeHomeLatLon(p.lat, p.lng);
+      });
+    }
+    if (save) storeHomeLatLon(lat, lon);
+  }
+
+  function storeHomeLatLon(lat, lon) {
+    var o = byId(state.homeOffers, openHomeId);
+    if (!o) return;
+    o.lat = round6(lat);
+    o.lon = round6(lon);
+    enqueue('offer:' + o.id, 'upsertHomeOffer', o);
+    $('home-geo-hint').textContent = 'Pos\u00e9 sur ' + o.lat + ', ' + o.lon +
+      ' \u00b7 tu peux d\u00e9placer le point en le faisant glisser.';
+  }
+
+  function geocodeHome() {
+    var input = $('home-address');
+    var q = input.value.trim();
+    var hint = $('home-geo-hint');
+    var o = byId(state.homeOffers, openHomeId);
+    if (!o) return;
+
+    o.ubicacion = input.value;
+    enqueue('offer:' + o.id, 'upsertHomeOffer', o);
+
+    if (!q) { hint.textContent = '\u00c9cris une adresse pour la chercher.'; return; }
+    if (!homeMap) { hint.textContent = 'La carte n\u2019est pas disponible, mais l\u2019adresse est enregistr\u00e9e.'; return; }
+
+    hint.textContent = 'Recherche\u2026';
+    geocodeAddress(q).then(function (pt) {
+      if (!pt) {
+        hint.textContent = 'Adresse introuvable. Clique sur la carte pour poser le point \u00e0 la main.';
+        return;
+      }
+      homeMap.setView([pt.lat, pt.lon], 16);
+      placeHomeMarker(pt.lat, pt.lon, true);
+    }).catch(function () {
+      hint.textContent = 'La recherche d\u2019adresse n\u2019a pas r\u00e9pondu. Clique sur la carte.';
+    });
+  }
+
+  function initHomeMap() {
+    var box = $('home-map');
+    if (homeAllMap) {
+      setTimeout(function () { if (homeAllMap) homeAllMap.invalidateSize(); }, 60);
+      return;
+    }
+    if (typeof L === 'undefined') {
+      box.innerHTML = '<p class="empty" style="margin:0">La carte n\u2019a pas pu se charger.</p>';
+      return;
+    }
+    homeAllMap = L.map(box, { scrollWheelZoom: false }).setView(STRASBOURG, 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(homeAllMap);
+    setTimeout(function () { if (homeAllMap) homeAllMap.invalidateSize(); }, 60);
+  }
+
+  function homeMarkerLabel(o) {
+    var t = homeRent(o);
+    return offerLabel(o) + (t ? ' \u2014 ' + t + ' \u20ac' : '');
+  }
+
+  function syncHomeMarkers() {
+    if (!homeAllMap) return;
+    var visibles = visibleApps(state.homeOffers);
+
+    Object.keys(homeMarkers).forEach(function (id) {
+      var still = visibles.filter(function (o) { return o.id === id && hasPoint(o); })[0];
+      if (!still) {
+        homeAllMap.removeLayer(homeMarkers[id]);
+        delete homeMarkers[id];
+      }
+    });
+
+    var pts = [];
+    visibles.forEach(function (o) {
+      if (!hasPoint(o)) return;
+      var pos = [Number(o.lat), Number(o.lon)];
+      pts.push(pos);
+      if (homeMarkers[o.id]) {
+        homeMarkers[o.id].setLatLng(pos);
+        if (homeMarkers[o.id].setTooltipContent) homeMarkers[o.id].setTooltipContent(homeMarkerLabel(o));
+        return;
+      }
+      var mk = L.marker(pos).addTo(homeAllMap);
+      if (mk.bindTooltip) mk.bindTooltip(homeMarkerLabel(o), { permanent: false });
+      mk.on('click', function () { openHomeOffer(o.id); });
+      homeMarkers[o.id] = mk;
+    });
+
+    var key = pts.map(function (p) { return p.join(','); }).sort().join('|');
+    if (key !== homeFitKey) {
+      homeFitKey = key;
+      if (pts.length === 1) homeAllMap.setView(pts[0], 14);
+      else if (pts.length > 1 && homeAllMap.fitBounds) homeAllMap.fitBounds(pts, { padding: [30, 30] });
+    }
+    $('home-map-hint').textContent = pts.length
+      ? pts.length + ' annonce(s) plac\u00e9e(s) \u00b7 clique sur un point pour ouvrir sa fiche.'
+      : 'Ouvre la fiche d\u2019une annonce et cherche son adresse pour la poser sur la carte.';
+  }
+
+  /** Al pasar por una fila, su punto resalta. Igual que en Entreprises. */
+  $('home-offers').addEventListener('mouseover', function (e) {
+    var tr = e.target.closest('[data-hoid]');
+    var id = tr && tr.getAttribute('data-hoid');
+    if (id === homeHl) return;
+    if (homeHl && homeMarkers[homeHl]) {
+      var el = homeMarkers[homeHl].getElement && homeMarkers[homeHl].getElement();
+      if (el) el.classList.remove('marker-hl');
+    }
+    homeHl = id;
+    if (id && homeMarkers[id]) {
+      var el2 = homeMarkers[id].getElement && homeMarkers[id].getElement();
+      if (el2) el2.classList.add('marker-hl');
+    }
+  });
+
+  // ------------------------------------------------------------ montage
+
+  function renderVehicule() {
+    renderSites('veh');
+    renderCriteria('veh');
+    renderVehModels();
+    renderVehOffers();
+  }
+
+  function renderLogement() {
+    renderSites('home');
+    renderCriteria('home');
+    renderHomeOffers();
+    renderHomeCompare();
+    syncHomeMarkers();
+  }
+
+  wireSites('veh');
+  wireSites('home');
+  wireCriteria('veh');
+  wireCriteria('home');
+  wireOffers('veh', 'veh-offers', 'data-void', 'data-vofiche', 'data-vodel');
+  wireOffers('home', 'home-offers', 'data-hoid', 'data-hofiche', 'data-hodel');
+  wireOffers('home', 'home-compare', 'data-hoid', 'data-hofiche-c', 'data-hodel-c');
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('veh-modal').hidden) return closeVehOffer();
+    if (!$('home-modal').hidden) return closeHomeOffer();
+  });
 
   // =====================================================================
   //  Demarrage

@@ -29,7 +29,10 @@ const uniq = (a) => Array.from(new Set(a)).sort();
 
 const called = uniq([]
   .concat([...appJs.matchAll(/\bapi\('([A-Za-z]+)'/g)].map(m => m[1]))
-  .concat([...appJs.matchAll(/\benqueue\([^,]+,\s*'([A-Za-z]+)'/g)].map(m => m[1])));
+  .concat([...appJs.matchAll(/\benqueue\([^,]+,\s*'([A-Za-z]+)'/g)].map(m => m[1]))
+  // Las dos busquedas nuevas despachan por config (DOM[domain].action), asi que
+  // la accion no esta escrita en la llamada: se lee de la propia config.
+  .concat([...appJs.matchAll(/\b(?:action|delAction):\s*'([A-Za-z]+)'/g)].map(m => m[1])));
 
 const routed = uniq([...codeGs.matchAll(/case\s+'([A-Za-z]+)'\s*:/g)].map(m => m[1]));
 
@@ -658,20 +661,28 @@ check('la cabecera del pliegue esconde el marcador del navegador',
 console.log('\n== todo campo editable se guarda solo ==');
 
 const HOOKS = ['data-field', 'data-cfield', 'data-cofield', 'data-af', 'data-af-sel',
-               'data-mq', 'data-mq-sel', 'data-ml', 'data-mc', 'data-qfield', 'data-qsel'];
+               'data-mq', 'data-mq-sel', 'data-ml', 'data-mc', 'data-qfield', 'data-qsel',
+               // véhicule et logement
+               'data-sfield', 'data-insp', 'data-vo', 'data-vo-sel', 'data-ho', 'data-ho-sel',
+               'data-crit', 'data-hcrit'];
+
+// Las dos direcciones se guardan por su propio listener, no por un data-*.
+const ADDRESS_INPUTS = ['md-address', 'home-address'];
 
 const controles = [...appJs.matchAll(/<(input|textarea|select)\b[^>]*/g)]
   .map(m => m[0])
   .filter(t => !/type="(button|submit)"/.test(t));
 
 const sinHook = controles.filter(t => !HOOKS.some(h => t.indexOf(h + '=') >= 0));
-// md-address es la excepcion: se guarda por su propio listener, no por data-*.
-const excepciones = sinHook.filter(t => t.indexOf('id="md-address"') >= 0);
+const excepciones = sinHook.filter(t => ADDRESS_INPUTS.some(id => t.indexOf('id="' + id + '"') >= 0));
 check('ningun campo pintado sin engancharse al guardado',
   sinHook.length === excepciones.length,
-  sinHook.filter(t => t.indexOf('id="md-address"') < 0).map(t => t.slice(0, 70)));
-check('la direccion de la ficha se guarda al teclear (no solo con «Chercher»)',
-  /\$\('md-address'\)\.addEventListener\('input'[\s\S]{0,260}enqueue\('app:'/.test(appJs));
+  sinHook.filter(t => !ADDRESS_INPUTS.some(id => t.indexOf('id="' + id + '"') >= 0))
+    .map(t => t.slice(0, 70)));
+ADDRESS_INPUTS.forEach(id => {
+  check(id + ' se guarda al teclear (no solo con «Chercher»)',
+    new RegExp("\\$\\('" + id + "'\\)\\.addEventListener\\('input'[\\s\\S]{0,300}enqueue\\(").test(appJs));
+});
 check('los cuatro grupos de campos de la ficha tienen su listener',
   ['data-af', 'data-mq', 'data-ml', 'data-mc'].every(h =>
     appJs.indexOf("getAttribute('" + h + "')") > 0));
@@ -855,6 +866,291 @@ check('el prompt y el JSON no se comen la pantalla',
 // app.js es ASCII puro: los acentos viven como \uXXXX.
 check('el pie dice cuantas ofertas hay pegadas antes de importar',
   /function updateAiFootHint/.test(appJs) && /offres d\\u00e9tect\\u00e9es/.test(appJs));
+
+// ============ 11. les deux autres recherches : vehicule et logement
+// app.js guarda los acentos como \uXXXX: para mirar TEXTOS hace falta descifrarlos.
+const appTxt = appJs.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+
+console.log('\n== les trois onglets sont montés ==');
+check('les trois volets existent dans le HTML',
+  ['emploi', 'vehicule', 'logement'].every(t => html.indexOf('data-pane="' + t + '"') > 0));
+check('chaque volet a son onglet',
+  ['emploi', 'vehicule', 'logement'].every(t => html.indexOf('data-tab="' + t + '"') > 0));
+check('l’onglet actif est mémorisé', /localStorage\.setItem\(LS_TAB/.test(appJs));
+check('les cartes sont remesurées en changeant d’onglet',
+  /if \(name === 'logement'\) \{ initHomeMap\(\); syncHomeMarkers\(\); \}/.test(appJs));
+
+console.log('\n== les catalogues sont là et tiennent debout ==');
+function catalogo(nombre) {
+  const i = appTxt.indexOf('var ' + nombre + ' = {');
+  const j = appTxt.indexOf('\n  };', i);
+  return appTxt.slice(i, j + 4);
+}
+const sitesSrc = catalogo('SITES');
+check('SITES couvre les deux domaines',
+  /veh: \[/.test(sitesSrc) && /home: \[/.test(sitesSrc));
+const urls = [...sitesSrc.matchAll(/url: '([^']+)'/g)].map(m => m[1]);
+check('tous les liens des sites sont en https', urls.length > 20 && urls.every(u => u.indexOf('https://') === 0),
+  urls.filter(u => u.indexOf('https://') !== 0));
+check('les sites indispensables en France sont là',
+  ['histovec', 'nongage', 'zfe', 'lacentrale', 'leboncoin'].every(k => sitesSrc.indexOf("key: '" + k + "'") > 0));
+check('le dossier locataire et le garant gratuit aussi',
+  ['dossierfacile', 'visale', 'pap', 'seloger'].every(k => sitesSrc.indexOf("key: '" + k + "'") > 0));
+
+const inspSrc = catalogo('INSPECTIONS');
+const vehInsp = inspSrc.slice(inspSrc.indexOf('veh: ['), inspSrc.indexOf('home: ['));
+const homeInsp = inspSrc.slice(inspSrc.indexOf('home: ['));
+check('la liste d’une occasion fait au moins 20 points',
+  (vehInsp.match(/\n      '/g) || []).length >= 20, (vehInsp.match(/\n      '/g) || []).length);
+check('elle couvre les pièges classiques',
+  ['Histovec', 'distribution', 'Rouille', 'DOT', 'non-gage', 'froid', 'Essai routier']
+    .every(k => vehInsp.indexOf(k) > 0));
+check('la liste de visite d’un logement fait au moins 20 points',
+  (homeInsp.match(/\n      '/g) || []).length >= 20, (homeInsp.match(/\n      '/g) || []).length);
+const HOME_CLAVES = ['DPE', 'Humidité', 'Bruit', 'Visale', 'DossierFacile', 'état des lieux',
+                     'charges', 'Vis-à-vis'];
+const homeInspLow = homeInsp.toLowerCase();
+check('elle couvre l’essentiel',
+  HOME_CLAVES.every(k => homeInspLow.indexOf(k.toLowerCase()) >= 0),
+  HOME_CLAVES.filter(k => homeInspLow.indexOf(k.toLowerCase()) < 0));
+
+console.log('\n== la grille candidats × critères ==');
+// Se saca del propio app.js y se corre con stubs, como en las otras pruebas.
+function gridHtml(criterios, sujetos, checks) {
+  const trozo = (a, b) => appJs.slice(appJs.indexOf(a), appJs.indexOf(b));
+  const src = trozo('  function checkId(', '  function renderChecks(');
+  const box = {};
+  const env = {
+    VERDICTS: [{ value: '', label: '—', tone: 'todo' }, { value: 'oui', label: 'Oui', tone: 'good' }],
+    state: { criteria: criterios, checks: checks, profileId: 'P' },
+    esc: (x) => String(x == null ? '' : x).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+    byId: (a, id) => a.find(x => x.id === id) || null,
+    selectHtml: (l, v, f, extra) => '<select data-field="' + f + '"' + (extra || '') + '>' + v + '</select>',
+    criteriaOf: (d) => criterios.filter(c => c.domain === d),
+    critLabel: (r, i) => (r.label && r.label.trim()) || 'Critère ' + (i + 1),
+    enqueue: () => {}
+  };
+  const keys = Object.keys(env);
+  const fn = new Function(...keys, src + '\nreturn checksGridHtml;')(...keys.map(k => env[k]));
+  return fn('veh', sujetos, [{ label: 'Modèle', width: '190px', html: (m) => env.esc(m.marca) }],
+            'data-vmid', 'data-vmdel');
+}
+
+const crits = [
+  { id: 'c1', domain: 'veh', position: 10, label: 'Budget', detalle: 'Moins de 8000 €', importancia: 'Haute' },
+  { id: 'c2', domain: 'veh', position: 20, label: 'Fiabilité', detalle: '', importancia: 'Moyenne' },
+  { id: 'c3', domain: 'veh', position: 30, label: 'Crit’Air ZFE', detalle: '', importancia: 'Haute' },
+  { id: 'x9', domain: 'home', position: 10, label: 'Loyer', detalle: '', importancia: 'Haute' }
+];
+const modelos = [{ id: 'm1', marca: 'Dacia' }, { id: 'm2', marca: 'Toyota' }];
+const checks = [
+  { id: 'm1::c1', domain: 'veh', subjectId: 'm1', criterionId: 'c1', verdict: 'oui', nota: '' },
+  { id: 'm1::c2', domain: 'veh', subjectId: 'm1', criterionId: 'c2', verdict: 'non', nota: '' },
+  { id: 'm2::c1', domain: 'veh', subjectId: 'm2', criterionId: 'c1', verdict: 'oui', nota: '' },
+  { id: 'm2::c2', domain: 'veh', subjectId: 'm2', criterionId: 'c2', verdict: 'oui', nota: '' },
+  { id: 'm2::c3', domain: 'veh', subjectId: 'm2', criterionId: 'c3', verdict: 'oui', nota: '' }
+];
+const g = gridHtml(crits, modelos, checks);
+
+check('une colonne par critère du domaine, et pas ceux des autres',
+  (g.match(/th class="th-crit"/g) || []).length === 3 && g.indexOf('Loyer') < 0,
+  (g.match(/th class="th-crit"/g) || []).length);
+check('les critères « Haute » sont marqués', (g.match(/th-must/g) || []).length === 2);
+check('le détail du critère est en infobulle', /title="Moins de 8000 €"/.test(g));
+check('une case par croisement modèle × critère', (g.match(/data-field="verdict"/g) || []).length === 6);
+check('la case connaît son critère', /data-crit="c1"/.test(g) && /data-crit="c3"/.test(g));
+check('le score compte les « oui » sur le total',
+  g.indexOf('>1/3<') > 0 && g.indexOf('>3/3<') > 0, g.match(/score" data-tone="\w+">[^<]*/g));
+check('le score se colore selon ce qu’il vaut',
+  /data-tone="bad">1\/3/.test(g) && /data-tone="good">3\/3/.test(g), g.match(/data-tone="\w+">\d\/3/g));
+check('la grille défile horizontalement au lieu de casser la page',
+  /table-wrap--wide/.test(g) && /overflow-x:\s*auto/.test(css.slice(css.indexOf('.table-wrap--wide'))));
+
+console.log('\n== la photo d’un modèle ==');
+const thumbSrc = appJs.slice(appJs.indexOf('  function thumbHtml('), appJs.indexOf('  function renderVehModels('));
+const thumb = new Function('esc', 'normalizeUrl',
+  thumbSrc + '\nreturn thumbHtml;')(
+    (x) => String(x == null ? '' : x).replace(/"/g, '&quot;'),
+    (v) => /^https?:\/\//i.test(v) ? v : 'https://' + v);
+check('sans URL, une place tenue et pas d’image cassée', /thumb--empty/.test(thumb('')));
+check('avec une URL, une vignette cliquable',
+  /<img src="https:\/\/exemple\.fr\/x\.jpg"/.test(thumb('https://exemple.fr/x.jpg')) &&
+  /target="_blank"/.test(thumb('https://exemple.fr/x.jpg')));
+check('une URL sans https:// est réparée', /https:\/\/exemple\.fr/.test(thumb('exemple.fr/x.jpg')));
+check('une image morte ne laisse pas un cadre vide', /onerror=/.test(thumb('https://x.fr/a.png')));
+check('la feuille ne stocke pas l’image, juste son adresse',
+  schemaCols('VehModels').indexOf('imagen') >= 0 &&
+  /la hoja no guarda ficheros/.test(appJs.slice(appJs.indexOf('function thumbHtml') - 200,
+                                                appJs.indexOf('function thumbHtml'))));
+
+console.log('\n== la liste de révision d’une occasion ==');
+const inspFns = (() => {
+  const src = appJs.slice(appJs.indexOf('  function inspectionItems('),
+                          appJs.indexOf('  function renderInspections('));
+  const state = { inspections: [], profileId: 'P' };
+  const env = {
+    state,
+    INSPECTIONS: { veh: ['Histovec', 'Distribution', 'Rouille'], home: ['DPE'] },
+    inspectionsOf: (d, o) => state.inspections.filter(r => r.domain === d && r.offerId === o),
+    byId: (a, id) => a.find(x => x.id === id) || null,
+    api: () => ({ catch: () => {} }),
+    showBanner: () => {}
+  };
+  const keys = Object.keys(env);
+  const out = new Function(...keys, src +
+    '\nreturn { items: inspectionItems, clean: cleanInspection, ensure: ensureInspections, state: state };')
+    (...keys.map(k => env[k]));
+  return out;
+})();
+
+let items = inspFns.items('veh', 'o1');
+check('sans rien de sauvé, la liste type apparaît quand même',
+  items.length === 3 && items.every(r => r.isVirtual), items);
+check('les points ont un id prévisible (pas de doublon entre appareils)',
+  items[0].id === 'o1::0' && items[2].id === 'o1::2');
+check('rien n’est écrit dans la feuille avant qu’on y touche',
+  inspFns.state.inspections.length === 0);
+
+let aplicado = 0;
+inspFns.ensure('veh', 'o1', () => { aplicado++; });
+check('au premier geste, toute la liste est matérialisée d’un coup',
+  inspFns.state.inspections.length === 3 && aplicado === 1);
+check('les lignes créées n’ont que les colonnes de la feuille',
+  inspFns.state.inspections.every(r =>
+    Object.keys(r).every(k => schemaCols('Inspections').indexOf(k) >= 0) &&
+    !('isVirtual' in r)),
+  Object.keys(inspFns.state.inspections[0]));
+inspFns.state.inspections[1].done = 'si';
+items = inspFns.items('veh', 'o1');
+check('après ça, la liste sauvée est celle qui compte',
+  items.length === 3 && !items.some(r => r.isVirtual) && items[1].done === 'si');
+
+inspFns.state.inspections.push({ id: 'libre', profileId: 'P', domain: 'veh', offerId: 'o1',
+  position: 999, item: 'Mon point à moi', done: '', nota: '' });
+items = inspFns.items('veh', 'o1');
+check('un point ajouté à la main va à la fin, sans doublonner la liste type',
+  items.length === 4 && items[3].item === 'Mon point à moi');
+
+let apl2 = 0;
+inspFns.ensure('veh', 'o1', () => { apl2++; });
+check('une liste déjà sauvée n’est pas réécrite',
+  apl2 === 1 && inspFns.state.inspections.length === 4);
+
+check('la liste ne sort que pour une occasion',
+  /if \(o\.estadoVeh === 'Occasion'\)[\s\S]{0,200}renderInspections\('veh'/.test(appJs));
+check('pour un neuf, ce sont les conseils de négociation',
+  /if \(o\.estadoVeh === 'Neuf'\)[\s\S]{0,200}se négocie/.test(appTxt));
+check('changer neuf/occasion refait le bloc tout de suite',
+  /if \(field === 'estadoVeh'\) renderVehCheckBlock\(o\)/.test(appJs));
+
+console.log('\n== les routes des deux volets, contre le simulateur ==');
+const V = call('createProfile', { name: 'Vero' }).data.profile;
+
+let r2 = call('upsertSite', { id: V.id + '::veh::lacentrale', profileId: V.id, domain: 'veh',
+  siteKey: 'lacentrale', name: '', url: '', hecho: 'si', notas: 'vu le 28' });
+check('upsertSite répond ok', r2.ok === true, r2);
+call('upsertCriterion', { id: 'k1', profileId: V.id, domain: 'veh', position: 10,
+  label: 'Budget', detalle: 'moins de 8000', importancia: 'Haute' });
+call('upsertCriterion', { id: 'k2', profileId: V.id, domain: 'home', position: 10,
+  label: 'Loyer', detalle: '', importancia: 'Haute' });
+call('upsertVehModel', { id: 'mm1', profileId: V.id, position: 10, marca: 'Dacia',
+  modelo: 'Sandero', motor: '1.0 essence', anos: '2019+', precioMin: '7000',
+  precioMax: '9000', imagen: 'https://exemple.fr/sandero.jpg', notas: '' });
+call('upsertCheck', { id: 'mm1::k1', profileId: V.id, domain: 'veh', subjectId: 'mm1',
+  criterionId: 'k1', verdict: 'oui', nota: '' });
+call('upsertVehOffer', { id: 'vo1', profileId: V.id, modelId: 'mm1', position: 10,
+  fecha: '2026-08-28', titulo: 'Sandero 2019 — 62 000 km', vendedor: 'Garage Kehl',
+  tipoVendedor: 'Garage / concession', precio: '8200', km: '62000', ano: '2019',
+  estadoVeh: 'Occasion', controlTecnico: 'fait 03/2026', enlace: 'https://lacentrale.fr/x',
+  telefono: '0388000000', ubicacion: 'Kehl', estado: 'Contactée', nota: '8',
+  notaComentario: 'Bon prix', proximaAccion: 'Demander Histovec' });
+call('upsertHomeOffer', { id: 'ho1', profileId: V.id, position: 10, fecha: '2026-08-28',
+  titulo: 'T2 Krutenau', agencia: 'Orpi', tipoVendedor: 'Agence', alquiler: '650',
+  cargas: '70', superficie: '45', piezas: '2', planta: '3e', muebles: 'Non meublé',
+  dpe: 'D', disponible: '1er octobre', enlace: 'https://seloger.com/x',
+  telefono: '0388111111', ubicacion: '3 rue de Zurich', lat: '48.581', lon: '7.757',
+  estado: 'Visite prévue', nota: '9', notaComentario: 'Très lumineux', proximaAccion: 'Visite mardi' });
+call('upsertCheck', { id: 'ho1::k2', profileId: V.id, domain: 'home', subjectId: 'ho1',
+  criterionId: 'k2', verdict: 'partiel', nota: '' });
+
+const inspRows = [];
+for (let i = 0; i < 24; i++) {
+  inspRows.push({ id: 'vo1::' + i, profileId: V.id, domain: 'veh', offerId: 'vo1',
+    position: (i + 1) * 10, item: 'Point ' + i, done: i === 0 ? 'si' : '', nota: '' });
+}
+r2 = call('importRows', { table: 'Inspections', rows: inspRows });
+check('importRows écrit les 24 points en une seule requête',
+  r2.ok === true && r2.data.rows === 24, r2);
+check('importRows refuse une table hors liste',
+  call('importRows', { table: 'Profiles', rows: [{ id: 'x' }] }).ok === false);
+check('importRows refuse une liste vide',
+  call('importRows', { table: 'Inspections', rows: [] }).ok === false);
+
+let dv = call('loadProfile', { profileId: V.id }).data;
+check('loadProfile ramène les sept collections nouvelles',
+  dv.sites.length === 1 && dv.criteria.length === 2 && dv.vehModels.length === 1 &&
+  dv.checks.length === 2 && dv.vehOffers.length === 1 && dv.homeOffers.length === 1 &&
+  dv.inspections.length === 24,
+  { s: dv.sites.length, c: dv.criteria.length, m: dv.vehModels.length, k: dv.checks.length,
+    v: dv.vehOffers.length, h: dv.homeOffers.length, i: dv.inspections.length });
+check('rien ne se perd en route pour une voiture',
+  dv.vehOffers[0].estadoVeh === 'Occasion' && dv.vehOffers[0].km === '62000' &&
+  dv.vehOffers[0].controlTecnico === 'fait 03/2026' &&
+  dv.vehOffers[0].notaComentario === 'Bon prix', dv.vehOffers[0]);
+check('ni pour un logement, coordonnées comprises',
+  dv.homeOffers[0].alquiler === '650' && dv.homeOffers[0].cargas === '70' &&
+  dv.homeOffers[0].dpe === 'D' && dv.homeOffers[0].lat === '48.581', dv.homeOffers[0]);
+check('l’image du modèle est bien une URL en texte',
+  dv.vehModels[0].imagen === 'https://exemple.fr/sandero.jpg');
+
+console.log('\n== les suppressions emportent ce qui en dépend ==');
+call('deleteCriterion', { id: 'k1' });
+dv = call('loadProfile', { profileId: V.id }).data;
+check('un critère supprimé emporte ses cases',
+  dv.criteria.length === 1 && dv.checks.length === 1 && dv.checks[0].id === 'ho1::k2',
+  dv.checks);
+
+call('deleteHomeOffer', { id: 'ho1' });
+dv = call('loadProfile', { profileId: V.id }).data;
+check('un logement supprimé emporte ses cases',
+  dv.homeOffers.length === 0 && dv.checks.length === 0, dv.checks);
+
+call('deleteVehModel', { id: 'mm1' });
+dv = call('loadProfile', { profileId: V.id }).data;
+check('un modèle supprimé emporte ses annonces et leurs listes',
+  dv.vehModels.length === 0 && dv.vehOffers.length === 0 && dv.inspections.length === 0,
+  { m: dv.vehModels.length, v: dv.vehOffers.length, i: dv.inspections.length });
+
+// et le profil emporte absolument tout
+call('upsertVehOffer', { id: 'vo9', profileId: V.id, position: 10, titulo: 'reste' });
+call('upsertSite', { id: 's9', profileId: V.id, domain: 'home', siteKey: 'x', name: 'reste' });
+call('deleteProfile', { id: V.id });
+dv = call('loadProfile', { profileId: V.id }).data;
+check('supprimer le profil ne laisse rien derrière',
+  ['sites', 'criteria', 'vehModels', 'checks', 'vehOffers', 'homeOffers', 'inspections']
+    .every(k => dv[k].length === 0),
+  Object.keys(dv).map(k => k + ':' + dv[k].length).join(' '));
+
+console.log('\n== les annonces masquées marchent comme dans le suivi ==');
+check('les deux domaines réutilisent le même filtre',
+  /rows = visibleApps\(all\)/.test(appJs.slice(appJs.indexOf('function renderVehOffers'))) &&
+  /rows = visibleApps\(all\)/.test(appJs.slice(appJs.indexOf('function renderHomeOffers'))));
+check('« Écartée » existe dans les deux listes de statuts',
+  /VEH_STATUTS = \[[\s\S]*?value: ST_ECARTEE/.test(appJs) &&
+  /HOME_STATUTS = \[[\s\S]*?value: ST_ECARTEE/.test(appJs));
+check('un bouton révèle les masquées dans chaque volet', /data-toggle-hidden-d/.test(appJs));
+
+// ------- 12. y por ultimo, que la pagina arranque de verdad
+// Vive en su propio fichero porque necesita un DOM de mentira y esperas.
+console.log('\n== el frontend arranca (tools/check-boot.js) ==');
+try {
+  require('child_process').execSync('node ' + path.join(__dirname, 'check-boot.js'),
+    { stdio: 'inherit' });
+} catch (e) {
+  fail++;
+  console.log('  FAIL el arranque del frontend ha fallado (ver arriba)');
+}
 
 console.log('\n' + (fail ? fail + ' PRUEBA(S) FALLIDA(S)' : 'Contrato: ninguna prueba falla.'));
 process.exit(fail ? 1 : 0);

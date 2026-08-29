@@ -31,7 +31,43 @@ var SCHEMA = {
   // conviene dar si vuelven a hacer la misma pregunta en otra entrevista.
   Questions: ['id', 'profileId', 'applicationId', 'position', 'question', 'answered', 'answer'],
   Learnings: ['id', 'profileId', 'applicationId', 'position', 'note'],
-  Contacts:  ['id', 'profileId', 'applicationId', 'position', 'name', 'role', 'email', 'phone']
+  Contacts:  ['id', 'profileId', 'applicationId', 'position', 'name', 'role', 'email', 'phone'],
+
+  // ---- Las otras dos busquedas: vehiculo y vivienda ----------------
+  // 'domain' vale 'veh' o 'home'. Las tres busquedas comparten la forma
+  // -sitios donde buscar, criterios, ofertas, ficha- pero no las tablas:
+  // asi una columna nueva en una no toca a las demas.
+
+  // Sitios donde buscar. El id se deriva del perfil, el dominio y la clave,
+  // como en Channels: dos aparatos escriben en la misma fila.
+  Sites: ['id', 'profileId', 'domain', 'siteKey', 'name', 'url', 'hecho', 'notas'],
+
+  // Mis criterios. Cada uno es una columna en la tabla de candidatos.
+  Criteria: ['id', 'profileId', 'domain', 'position', 'label', 'detalle', 'importancia'],
+
+  // Modelos de coche que me interesan (la imagen es una URL: la hoja no
+  // guarda ficheros).
+  VehModels: ['id', 'profileId', 'position', 'marca', 'modelo', 'motor', 'anos',
+              'precioMin', 'precioMax', 'imagen', 'notas'],
+
+  // Si un candidato cumple un criterio. subjectId es un modelo (veh) o una
+  // oferta (home). El id se deriva de los dos: nunca hay duplicados.
+  Checks: ['id', 'profileId', 'domain', 'subjectId', 'criterionId', 'verdict', 'nota'],
+
+  // Anuncios concretos.
+  VehOffers: ['id', 'profileId', 'modelId', 'position', 'fecha', 'titulo', 'vendedor',
+              'tipoVendedor', 'precio', 'km', 'ano', 'estadoVeh', 'controlTecnico',
+              'enlace', 'telefono', 'ubicacion', 'estado', 'nota', 'notaComentario',
+              'proximaAccion'],
+
+  HomeOffers: ['id', 'profileId', 'position', 'fecha', 'titulo', 'agencia', 'tipoVendedor',
+               'alquiler', 'cargas', 'superficie', 'piezas', 'planta', 'muebles', 'dpe',
+               'disponible', 'enlace', 'telefono', 'ubicacion', 'lat', 'lon', 'estado',
+               'nota', 'notaComentario', 'proximaAccion'],
+
+  // Lo que hay que preguntar y revisar antes de comprar un coche de segunda
+  // mano o de firmar un alquiler. offerId es la oferta a la que pertenece.
+  Inspections: ['id', 'profileId', 'domain', 'offerId', 'position', 'item', 'done', 'nota']
 };
 
 /** Tablas colgadas de una candidatura, para los borrados en cascada. */
@@ -98,6 +134,22 @@ function route(req) {
     case 'deleteContact':     return { removed: remove('Contacts', p.id) };
 
     case 'importOffers':      return importOffers(p);
+
+    // ---- vehiculo y vivienda ----------------------------------------
+    case 'upsertSite':        return { row: upsert('Sites', p) };
+    case 'deleteSite':        return { removed: remove('Sites', p.id) };
+    case 'upsertCriterion':   return { row: upsert('Criteria', p) };
+    case 'deleteCriterion':   return deleteCriterion(p.id);
+    case 'upsertCheck':       return { row: upsert('Checks', p) };
+    case 'upsertVehModel':    return { row: upsert('VehModels', p) };
+    case 'deleteVehModel':    return deleteVehModel(p.id);
+    case 'upsertVehOffer':    return { row: upsert('VehOffers', p) };
+    case 'deleteVehOffer':    return deleteVehOffer(p.id);
+    case 'upsertHomeOffer':   return { row: upsert('HomeOffers', p) };
+    case 'deleteHomeOffer':   return deleteHomeOffer(p.id);
+    case 'upsertInspection':  return { row: upsert('Inspections', p) };
+    case 'importRows':        return importRows(p);
+    case 'deleteInspection':  return { removed: remove('Inspections', p.id) };
   }
   throw new Error('Accion desconocida: ' + action);
 }
@@ -124,7 +176,9 @@ function renameProfile(id, name) {
 }
 
 function deleteProfile(id) {
-  ['Applications', 'JobTypes', 'Channels', 'Companies'].concat(CHILDREN).forEach(function (name) {
+  ['Applications', 'JobTypes', 'Channels', 'Companies',
+   'Sites', 'Criteria', 'VehModels', 'Checks', 'VehOffers', 'HomeOffers', 'Inspections']
+  .concat(CHILDREN).forEach(function (name) {
     removeWhere(name, 'profileId', id);
   });
   return { removed: remove('Profiles', id) };
@@ -183,6 +237,56 @@ function importOffers(p) {
   return { imported: imported, rows: total };
 }
 
+/** Un criterio se lleva sus casillas de « lo cumple / no lo cumple ». */
+function deleteCriterion(id) {
+  removeWhere('Checks', 'criterionId', id);
+  return { removed: remove('Criteria', id) };
+}
+
+/** Un modelo se lleva sus anuncios (y lo que cuelga de ellos) y sus casillas. */
+function deleteVehModel(id) {
+  readWhere('VehOffers', 'modelId', id).forEach(function (o) {
+    removeWhere('Inspections', 'offerId', o.id);
+  });
+  removeWhere('VehOffers', 'modelId', id);
+  removeWhere('Checks', 'subjectId', id);
+  return { removed: remove('VehModels', id) };
+}
+
+/** Un anuncio de coche se lleva su lista de revision. */
+function deleteVehOffer(id) {
+  removeWhere('Inspections', 'offerId', id);
+  return { removed: remove('VehOffers', id) };
+}
+
+/** Un piso se lleva su lista de visita y sus casillas de criterios. */
+function deleteHomeOffer(id) {
+  removeWhere('Inspections', 'offerId', id);
+  removeWhere('Checks', 'subjectId', id);
+  return { removed: remove('HomeOffers', id) };
+}
+
+/**
+ * Escribe de golpe varias filas de UNA tabla. Lo usan las listas de revision:
+ * cargar los 24 puntos de una lista son 24 filas, y mandarlas de una en una
+ * seria una peticion por punto.
+ */
+var IMPORT_ROWS_OK = ['Inspections', 'Checks', 'Criteria', 'Sites'];
+
+function importRows(p) {
+  var table = String(p.table || '');
+  if (IMPORT_ROWS_OK.indexOf(table) < 0) {
+    throw new Error('Tabla no permitida para importRows: ' + table);
+  }
+  var rows = p.rows || [];
+  if (!rows.length) throw new Error('No hay filas que escribir');
+  if (rows.length > IMPORT_MAX_ROWS) {
+    throw new Error('Demasiadas filas de una vez (' + rows.length + ')');
+  }
+  rows.forEach(function (row) { upsert(table, row); });
+  return { table: table, rows: rows.length };
+}
+
 function loadProfile(profileId) {
   if (!profileId) throw new Error('Falta el perfil');
   return {
@@ -192,7 +296,15 @@ function loadProfile(profileId) {
     companies:    sortBy(readWhere('Companies', 'profileId', profileId), 'position'),
     questions:    sortBy(readWhere('Questions', 'profileId', profileId), 'position'),
     learnings:    sortBy(readWhere('Learnings', 'profileId', profileId), 'position'),
-    contacts:     sortBy(readWhere('Contacts', 'profileId', profileId), 'position')
+    contacts:     sortBy(readWhere('Contacts', 'profileId', profileId), 'position'),
+
+    sites:        readWhere('Sites', 'profileId', profileId),
+    criteria:     sortBy(readWhere('Criteria', 'profileId', profileId), 'position'),
+    vehModels:    sortBy(readWhere('VehModels', 'profileId', profileId), 'position'),
+    checks:       readWhere('Checks', 'profileId', profileId),
+    vehOffers:    sortBy(readWhere('VehOffers', 'profileId', profileId), 'position'),
+    homeOffers:   sortBy(readWhere('HomeOffers', 'profileId', profileId), 'position'),
+    inspections:  sortBy(readWhere('Inspections', 'profileId', profileId), 'position')
   };
 }
 
