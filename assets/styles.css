@@ -1347,9 +1347,10 @@ body.modal-open { overflow: hidden; }
    Section Entreprises
    ================================================================ */
 
-.co-geo { display: flex; align-items: center; gap: 6px; padding-right: 8px; }
-.co-geo .cell-input { flex: 1 1 auto; min-width: 0; }
-.co-geo .btn { flex: none; padding: 4px 9px; font-size: 12.5px; }
+/* L'adresse au-dessus du bouton : la colonne peut rester étroite. */
+.co-geo { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding-bottom: 4px; }
+.co-geo .cell-input { width: 100%; min-width: 0; }
+.co-geo .btn { flex: none; margin-left: 8px; padding: 3px 9px; font-size: 12.5px; }
 
 .co-coord {
   padding: 0 12px 8px;
@@ -1385,8 +1386,7 @@ body.modal-open { overflow: hidden; }
 
 @media (max-width: 760px) {
   .companies-map { height: 260px; }
-  .co-geo { padding-right: 0; flex-wrap: wrap; }
-  .co-geo .btn { width: 100%; }
+  .co-geo .btn { width: 100%; margin-left: 0; }
   .co-coord, .co-used { padding: 4px 4px 0; }
 }
 
@@ -1424,6 +1424,7 @@ body.modal-open { overflow: hidden; }
 .pager .btn[disabled] { opacity: .45; cursor: default; }
 
 .co-check-cell { text-align: center; vertical-align: middle; }
+th.th-narrow { padding-left: 6px; padding-right: 6px; text-align: center; font-size: 13px; }
 .co-check { width: 18px; height: 18px; accent-color: var(--teal); cursor: pointer; margin: 10px 0; }
 
 #companies-body tr { cursor: pointer; }
