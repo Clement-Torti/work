@@ -200,6 +200,11 @@
   var coMarkers = {};     // id de empresa -> marcador
   var coFitKey = '';      // para no recentrar el mapa en cada tecleo
   var coHl = null;        // empresa resaltada al pasar por su fila
+  var coSel = null;       // empresa elegida en la tabla: el mapa la ensena
+  var coQuery = '';       // buscador de la seccion Entreprises
+  var coPage = 0;
+  var trackPages = {};    // seccion 4: id de tipo de puesto -> pagina abierta
+  var PAGE_SIZE = 10;
 
   // ---------------------------------------------------------------- utils
   var $ = function (id) { return document.getElementById(id); };
@@ -588,6 +593,8 @@
       state.vehOffers = data.vehOffers || [];
       state.homeOffers = data.homeOffers || [];
       state.inspections = data.inspections || [];
+      coSel = null; coQuery = ''; coPage = 0; trackPages = {};
+      $('companies-search').value = '';
       localStorage.setItem(LS_PROFILE, id);
       renderApp();
       hideBanner('app-error');
@@ -617,6 +624,7 @@
     renderCompanies();
     renderTracking();
     renderAllQuestions();
+    $('pitch').value = state.profile.presentation || '';
     renderVehicule();
     renderLogement();
     // La pestana se recuerda: al recargar se vuelve donde estabas.
@@ -827,6 +835,25 @@
     if (rows.length) rows[rows.length - 1].focus();
   });
 
+  // ---------------------------------------------------------- paginacion
+
+  /** Recorta una lista a una pagina. Una pagina fuera de rango se ajusta. */
+  function pageOf(rows, page) {
+    var pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    page = Math.min(Math.max(0, page || 0), pages - 1);
+    return { rows: rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), page: page, pages: pages };
+  }
+
+  /** attr lleva el numero de pagina a la que va cada boton. Vacio si sobra. */
+  function pagerHtml(p, attr) {
+    if (p.pages <= 1) return '';
+    return '<button class="btn btn--sm" type="button" ' + attr + '="' + (p.page - 1) + '"' +
+        (p.page === 0 ? ' disabled' : '') + ' aria-label="Page pr\u00e9c\u00e9dente">\u2039 Pr\u00e9c.</button>' +
+      '<span class="count-hint">Page ' + (p.page + 1) + ' / ' + p.pages + '</span>' +
+      '<button class="btn btn--sm" type="button" ' + attr + '="' + (p.page + 1) + '"' +
+        (p.page === p.pages - 1 ? ' disabled' : '') + ' aria-label="Page suivante">Suiv. \u203a</button>';
+  }
+
   // ---------------------------------------------------- 3. entreprises
 
   /**
@@ -874,19 +901,46 @@
     return !!a && a === String(b || '').trim().toLowerCase();
   }
 
+  /** Por orden alfabetico; las que aun no tienen nombre, delante. */
+  function sortedCompanies() {
+    return state.companies.slice().sort(function (a, b) {
+      return String(a.name || '').trim().localeCompare(String(b.name || '').trim(), 'fr',
+        { sensitivity: 'base', numeric: true }) ||
+        Number(a.position || 0) - Number(b.position || 0);
+    });
+  }
+
+  function matchesCompany(c, q) {
+    if (!q) return true;
+    return [c.name, c.description, c.ubicacion, c.email].some(function (v) {
+      return normKey(v).indexOf(q) >= 0;
+    });
+  }
+
+  function visibleCompanies() {
+    var q = normKey(coQuery);
+    return sortedCompanies().filter(function (c) { return matchesCompany(c, q); });
+  }
+
   function renderCompanies() {
     var body = $('companies-body');
+    var list = visibleCompanies();
+    var p = pageOf(list, coPage);
+    coPage = p.page;
 
     if (!state.companies.length) {
-      body.innerHTML = '<tr><td colspan="4" data-label=""><p class="empty" style="margin:10px">' +
+      body.innerHTML = '<tr><td colspan="7" data-label=""><p class="empty" style="margin:10px">' +
         'Ajoute une entreprise : son nom servira \u00e0 l\u2019autocompl\u00e9tion du suivi, et son ' +
         'adresse au lieu par d\u00e9faut de tes candidatures.</p></td></tr>';
+    } else if (!list.length) {
+      body.innerHTML = '<tr><td colspan="7" data-label=""><p class="empty" style="margin:10px">' +
+        'Aucune entreprise ne correspond \u00e0 \u00ab ' + esc(coQuery.trim()) + ' \u00bb.</p></td></tr>';
     } else {
-      body.innerHTML = state.companies.map(function (c) {
+      body.innerHTML = p.rows.map(function (c) {
         var used = state.applications.filter(function (a) {
           return sameName(a.empresa, c.name);
         }).length;
-        return '<tr data-coid="' + esc(c.id) + '">' +
+        return '<tr data-coid="' + esc(c.id) + '"' + (c.id === coSel ? ' class="is-sel"' : '') + '>' +
           '<td data-label="Nom">' +
             '<input class="cell-input" data-cofield="name" value="' + esc(c.name) +
               '" placeholder="Nom de l\u2019entreprise">' +
@@ -906,23 +960,40 @@
               ? '\u2299 ' + esc(c.lat) + ', ' + esc(c.lon)
               : '<span class="co-noplace">pas encore sur la carte</span>') + '</div>' +
           '</td>' +
+          '<td data-label="Note">' + selectHtml(NOTES, c.nota, 'nota', ' data-cosel="1"') + '</td>' +
+          '<td data-label="Email"><input class="cell-input" type="email" data-cofield="email" value="' +
+            esc(c.email) + '" placeholder="contact@\u2026" spellcheck="false" autocomplete="off"></td>' +
+          '<td data-label="Contact\u00e9e" class="co-check-cell"><input type="checkbox" class="co-check" ' +
+            'data-cocheck="contactado"' + (c.contactado === 'si' ? ' checked' : '') +
+            ' aria-label="D\u00e9j\u00e0 contact\u00e9e"></td>' +
           '<td class="cell-actions"><button class="row-del" type="button" data-co-del="1" ' +
             'aria-label="Retirer cette entreprise">\u00d7</button></td>' +
         '</tr>';
       }).join('');
     }
 
-    var placed = state.companies.filter(hasPoint).length;
-    $('companies-count').textContent = state.companies.length
-      ? state.companies.length + (state.companies.length === 1 ? ' entreprise' : ' entreprises') +
-        ' \u00b7 ' + placed + ' sur la carte'
-      : '';
+    $('companies-pager').innerHTML = pagerHtml(p, 'data-co-page');
+    updateCompaniesCount(list.length);
+    $('btn-export-companies').disabled = !state.companies.length;
 
     updateCompanyDatalist();
     autoGrowAll(body);
     initCompaniesMap();
     syncCompanyMarkers();
     coHl = null;   // la fila resaltada ya no existe tras reconstruir la tabla
+    if (coSel) paintCompany(coSel);
+  }
+
+  function updateCompaniesCount(shown) {
+    var n = state.companies.length;
+    var placed = state.companies.filter(hasPoint).length;
+    var done = state.companies.filter(function (c) { return c.contactado === 'si'; }).length;
+    $('companies-count').textContent = n
+      ? (coQuery.trim() ? shown + ' sur ' : '') +
+        n + (n === 1 ? ' entreprise' : ' entreprises') +
+        ' \u00b7 ' + placed + ' sur la carte \u00b7 ' + done +
+        (done === 1 ? ' contact\u00e9e' : ' contact\u00e9es')
+      : '';
   }
 
   /**
@@ -931,14 +1002,20 @@
    */
   function highlightCompany(id) {
     if (coHl === id) return;
-    if (coHl) markerHighlight(coHl, false);
+    var prev = coHl;
     coHl = id;
-    if (id) markerHighlight(id, true);
+    if (prev) paintCompany(prev);
+    if (id) paintCompany(id);
   }
 
-  function markerHighlight(id, on) {
+  /** Pinta fila y pin segun esten resaltados (coHl) o elegidos (coSel). */
+  function paintCompany(id) {
+    var on = id === coHl || id === coSel;
     var tr = $('companies-body').querySelector('tr[data-coid="' + cssEsc(id) + '"]');
-    if (tr) tr.classList.toggle('is-hl', on);
+    if (tr) {
+      tr.classList.toggle('is-hl', id === coHl);
+      tr.classList.toggle('is-sel', id === coSel);
+    }
 
     var mk = coMarkers[id];
     if (!mk) return;
@@ -948,6 +1025,46 @@
     if (el) el.classList.toggle('marker-hl', on);
     if (on) { if (mk.openTooltip) mk.openTooltip(); }
     else if (mk.closeTooltip) mk.closeTooltip();
+  }
+
+  /** Elegir una empresa en la tabla centra el mapa en ella. */
+  function selectCompany(id) {
+    if (!id || id === coSel) return;
+    var prev = coSel;
+    coSel = id;
+    if (prev) paintCompany(prev);
+    paintCompany(id);
+
+    var c = byId(state.companies, id);
+    var hint = $('companies-map-hint');
+    if (!c) return;
+    if (!hasPoint(c)) {
+      hint.textContent = companyLabel(c) + ' n\u2019est pas encore sur la carte : \u00e9cris son ' +
+        'adresse puis clique sur \u00ab Chercher \u00bb.';
+      return;
+    }
+    if (coMap) coMap.setView([Number(c.lat), Number(c.lon)], Math.max(coMap.getZoom ? coMap.getZoom() : 0, 15));
+    hint.textContent = companyLabel(c) + (c.ubicacion ? ' \u00b7 ' + c.ubicacion : '');
+  }
+
+  /**
+   * Lleva la tabla a la pagina donde esta una empresa (quitando la busqueda
+   * si la esconde) y la elige. Lo usan el boton de anadir y los pines.
+   */
+  function revealCompany(id) {
+    var c = byId(state.companies, id);
+    if (!c) return;
+    if (!matchesCompany(c, normKey(coQuery))) {
+      coQuery = '';
+      $('companies-search').value = '';
+    }
+    var idx = visibleCompanies().indexOf(c);
+    coPage = Math.floor(Math.max(0, idx) / PAGE_SIZE);
+    coSel = null;
+    renderCompanies();
+    selectCompany(id);
+    var tr = $('companies-body').querySelector('tr[data-coid="' + cssEsc(id) + '"]');
+    if (tr && tr.scrollIntoView) tr.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   function rowCompanyId(target) {
@@ -967,15 +1084,57 @@
     highlightCompany(null);
   });
 
-  // Mismo efecto con el teclado, y en el movil, donde no hay raton.
+  // Mismo efecto con el teclado, y en el movil, donde no hay raton. Entrar en
+  // una fila la elige: el mapa de debajo se centra en ella.
   $('companies-body').addEventListener('focusin', function (e) {
     highlightCompany(rowCompanyId(e.target));
+    selectCompany(rowCompanyId(e.target));
   });
   $('companies-body').addEventListener('focusout', function (e) {
     var tr = e.target.closest && e.target.closest('tr[data-coid]');
     if (tr && e.relatedTarget && tr.contains(e.relatedTarget)) return;
     highlightCompany(null);
   });
+
+  $('companies-search').addEventListener('input', function (e) {
+    coQuery = e.target.value;
+    coPage = 0;
+    renderCompanies();
+  });
+
+  $('companies-pager').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-co-page]');
+    if (!btn || btn.disabled) return;
+    coPage = Number(btn.getAttribute('data-co-page'));
+    renderCompanies();
+  });
+
+  $('btn-export-companies').addEventListener('click', exportCompanies);
+
+  /**
+   * Toda la tabla en CSV, sin filtro ni paginacion. Punto y coma y BOM: asi
+   * Excel en frances lo abre con las columnas y los acentos bien.
+   */
+  function exportCompanies() {
+    if (!state.companies.length) return;
+    var cell = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+    var head = ['Nom', 'Description', 'Adresse', 'Latitude', 'Longitude', 'Note /10', 'Email',
+                'Contact\u00e9e', 'Candidatures'];
+    var lines = [head.map(cell).join(';')].concat(sortedCompanies().map(function (c) {
+      var used = state.applications.filter(function (a) { return sameName(a.empresa, c.name); }).length;
+      return [c.name, c.description, c.ubicacion, c.lat, c.lon, c.nota, c.email,
+              c.contactado === 'si' ? 'oui' : 'non', used].map(cell).join(';');
+    }));
+    var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'entreprises-' + normKey(state.profile && state.profile.name).replace(/[^a-z0-9]+/g, '-') +
+      '-' + today() + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
 
   function updateCompanyDatalist() {
     var seen = {};
@@ -1033,6 +1192,7 @@
       }
       var mk = L.marker(pos, { draggable: true }).addTo(coMap);
       if (mk.bindTooltip) mk.bindTooltip(companyLabel(c));
+      mk.on('click', function () { revealCompany(c.id); });
       mk.on('dragend', function () {
         var row = byId(state.companies, c.id);
         if (!row) return;
@@ -1072,7 +1232,23 @@
     enqueue('company:' + row.id, 'upsertCompany', row);
   });
 
+  $('companies-body').addEventListener('change', function (e) {
+    var row = byId(state.companies, rowCompanyId(e.target));
+    if (!row) return;
+    if (e.target.getAttribute('data-cosel')) {
+      row.nota = e.target.value;
+      e.target.setAttribute('data-tone', toneOf(NOTES, e.target.value));
+    } else if (e.target.getAttribute('data-cocheck')) {
+      row.contactado = e.target.checked ? 'si' : '';
+      updateCompaniesCount(visibleCompanies().length);
+    } else return;
+    enqueue('company:' + row.id, 'upsertCompany', row);
+  });
+
   $('companies-body').addEventListener('click', function (e) {
+    // Un clic en cualquier parte de la fila la elige, no solo en un campo.
+    selectCompany(rowCompanyId(e.target));
+
     var geo = e.target.closest('[data-co-geocode]');
     if (geo) return geocodeCompany(geo.closest('tr').getAttribute('data-coid'));
 
@@ -1084,6 +1260,7 @@
         'supprim\u00e9es, elles perdent juste l\u2019adresse h\u00e9rit\u00e9e.')) return;
     state.companies = state.companies.filter(function (c) { return c.id !== id; });
     enqueue('company-del:' + id, 'deleteCompany', { id: id });
+    if (coSel === id) coSel = null;
     coFitKey = '';
     renderCompanies();
   });
@@ -1091,12 +1268,15 @@
   $('btn-add-company').addEventListener('click', function () {
     var row = {
       id: uid(), profileId: state.profileId, position: nextPosition(state.companies),
-      name: '', description: '', ubicacion: '', lat: '', lon: ''
+      name: '', description: '', ubicacion: '', lat: '', lon: '',
+      nota: '', email: '', contactado: ''
     };
     state.companies.push(row);
     enqueue('company:' + row.id, 'upsertCompany', row);
-    renderCompanies();
-    focusLast('#companies-body [data-cofield="name"]');
+    // Sin nombre se ordena delante: revealCompany la busca en su pagina.
+    revealCompany(row.id);
+    var input = $('companies-body').querySelector('tr[data-coid="' + cssEsc(row.id) + '"] [data-cofield="name"]');
+    if (input) input.focus();
   });
 
   function geocodeCompany(id) {
@@ -1215,6 +1395,8 @@
       var all = state.applications.filter(function (a) { return a.jobTypeId === jt.id; });
       var rows = visibleApps(all);
       var oculto = all.length - rows.length;
+      var p = pageOf(rows, trackPages[jt.id]);
+      trackPages[jt.id] = p.page;
       return '<section data-jt="' + esc(jt.id) + '">' +
         '<h3 class="subsection"><span data-jt-title>' + esc(jobTypeLabel(jt, i)) + '</span>' +
           '<span class="count-hint" data-jt-count>' + countLabel(rows) +
@@ -1231,13 +1413,14 @@
             '<th style="width:17%">Prochaine action</th>' +
             '<th style="width:82px"><span class="sr-only">Actions</span></th>' +
           '</tr></thead>' +
-          '<tbody>' + (rows.length ? rows.map(applicationHtml).join('')
+          '<tbody>' + (rows.length ? p.rows.map(applicationHtml).join('')
             : '<tr><td colspan="8" data-label=""><p class="empty" style="margin:10px">' +
               (oculto ? 'Rien \u00e0 afficher : ' + oculto + ' offre' + (oculto === 1 ? '' : 's') +
                 ' masqu\u00e9e' + (oculto === 1 ? '' : 's') + ' au-dessus.'
                       : 'Aucune candidature pour l\u2019instant.') + '</p></td></tr>') +
           '</tbody>' +
         '</table></div>' +
+        '<div class="pager">' + pagerHtml(p, 'data-jt-page') + '</div>' +
         '<div class="table-foot"><button class="btn btn--sm" type="button" data-add-app="' + esc(jt.id) + '">' +
           '+ Ajouter une candidature</button></div>' +
       '</section>';
@@ -1353,6 +1536,14 @@
     var addFor = e.target.getAttribute('data-add-app');
     if (addFor) return addApplication(addFor);
 
+    var pageBtn = e.target.closest('[data-jt-page]');
+    if (pageBtn) {
+      if (pageBtn.disabled) return;
+      trackPages[pageBtn.closest('section[data-jt]').getAttribute('data-jt')] =
+        Number(pageBtn.getAttribute('data-jt-page'));
+      return renderTracking();
+    }
+
     var fiche = e.target.closest('[data-fiche]');
     if (fiche) return openDetail(fiche.closest('tr').getAttribute('data-id'));
 
@@ -1383,6 +1574,8 @@
     };
     state.applications.push(row);
     enqueue('app:' + row.id, 'upsertApplication', row);
+    // La nueva va al final: se abre la ultima pagina (pageOf la ajusta).
+    trackPages[jobTypeId] = Infinity;
     renderTracking();
     var section = $('tracking').querySelector('section[data-jt="' + cssEsc(jobTypeId) + '"]');
     if (section) {
@@ -1438,6 +1631,13 @@
   }
 
   // ------------------------------------------- 4. questions d'entretien
+
+  // El texto para presentarse vive en la fila del perfil, no en una tabla.
+  $('pitch').addEventListener('input', function (e) {
+    state.profile.presentation = e.target.value;
+    enqueue('presentation:' + state.profileId, 'upsertPresentation',
+      { id: state.profileId, presentation: e.target.value });
+  });
 
   function appLabel(app) {
     if (!app) return '\u2014';
@@ -2515,7 +2715,8 @@
           id: ctx.uid(), profileId: ctx.profileId, position: coPos, name: nom,
           description: txt(co.description),
           ubicacion: txt(co.adresse || co.ubicacion),
-          lat: normCoord(co.lat), lon: normCoord(co.lon)
+          lat: normCoord(co.lat), lon: normCoord(co.lon),
+          nota: '', email: '', contactado: ''
         };
         out.companies.push(coRow);
         coByName[normKey(nom)] = coRow;

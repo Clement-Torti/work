@@ -1408,3 +1408,36 @@ body.modal-open { overflow: hidden; }
 
 /* La ligne survolée est reliée visuellement au pin. */
 #companies-body tr.is-hl > td:first-child { box-shadow: inset 3px 0 0 var(--teal); }
+
+/* Buscador, paginacion, columnas nuevas y fila elegida */
+.co-toolbar { margin-bottom: 10px; }
+.co-search { max-width: 460px; }
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.pager:empty { display: none; }
+.pager .btn[disabled] { opacity: .45; cursor: default; }
+
+.co-check-cell { text-align: center; vertical-align: middle; }
+.co-check { width: 18px; height: 18px; accent-color: var(--teal); cursor: pointer; margin: 10px 0; }
+
+#companies-body tr { cursor: pointer; }
+#companies-body tr.is-sel > td { background: var(--teal-soft); }
+#companies-body tr.is-sel > td:first-child { box-shadow: inset 3px 0 0 var(--teal); }
+
+.pitch { margin-bottom: 22px; }
+.pitch textarea { min-height: 140px; resize: vertical; line-height: 1.45; }
+
+@media (max-width: 760px) {
+  .co-search { max-width: none; }
+  .co-check-cell { text-align: left; }
+}
+
+@media print {
+  .co-toolbar, .pager { display: none !important; }
+}

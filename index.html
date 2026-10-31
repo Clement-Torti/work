@@ -162,27 +162,37 @@
       Les entreprises qui t'intéressent. Elles alimentent l'autocomplétion de la colonne
       « Entreprise » du suivi, et leur adresse sert de lieu par défaut aux candidatures.
     </p>
+    <div class="co-toolbar">
+      <input id="companies-search" class="input co-search" type="search" autocomplete="off"
+             placeholder="Rechercher une entreprise (nom, description, adresse, email)…"
+             aria-label="Rechercher une entreprise">
+    </div>
     <div class="table-wrap">
       <table class="grid">
         <thead>
           <tr>
-            <th style="width:22%">Nom</th>
-            <th style="width:38%">Description</th>
-            <th style="width:36%">Adresse</th>
+            <th style="width:17%">Nom</th>
+            <th style="width:23%">Description</th>
+            <th style="width:24%">Adresse</th>
+            <th style="width:10%">Note</th>
+            <th style="width:16%">Email</th>
+            <th style="width:6%">Contactée</th>
             <th style="width:44px"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody id="companies-body"></tbody>
       </table>
     </div>
+    <div id="companies-pager" class="pager"></div>
     <div class="table-foot">
       <button id="btn-add-company" class="btn btn--sm" type="button">+ Ajouter une entreprise</button>
+      <button id="btn-export-companies" class="btn btn--sm" type="button">Exporter (CSV)</button>
       <span id="companies-count" class="count-hint"></span>
     </div>
     <div id="companies-map" class="companies-map"></div>
     <p class="md-hint" id="companies-map-hint">
-      Écris une adresse puis clique sur « Chercher » pour placer l'entreprise. Une fois posé,
-      le point se déplace en le faisant glisser.
+      Clique sur une entreprise du tableau pour la voir sur la carte. Écris une adresse puis
+      clique sur « Chercher » pour la placer ; une fois posé, le point se déplace en le faisant glisser.
     </p>
   </section>
 
@@ -207,6 +217,12 @@
       Toutes les questions posées lors de tous tes entretiens, au même endroit — avec la réponse
       à donner si on te les repose.
     </p>
+    <div class="field pitch">
+      <label for="pitch">Me présenter</label>
+      <textarea id="pitch" class="input" rows="6"
+                placeholder="« Parlez-moi de vous » : ton parcours en quelques phrases, ce que tu sais faire, pourquoi Strasbourg, ce que tu cherches maintenant…"></textarea>
+      <p class="hint">Le texte à avoir en tête avant chaque entretien. Il est enregistré tout seul.</p>
+    </div>
     <div id="all-questions"></div>
   </section>
 

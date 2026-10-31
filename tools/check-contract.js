@@ -660,7 +660,7 @@ check('la cabecera del pliegue esconde el marcador del navegador',
 // "Enregistré". El texto desaparecia al recargar, sin un solo aviso.
 console.log('\n== todo campo editable se guarda solo ==');
 
-const HOOKS = ['data-field', 'data-cfield', 'data-cofield', 'data-af', 'data-af-sel',
+const HOOKS = ['data-field', 'data-cfield', 'data-cofield', 'data-cocheck', 'data-af', 'data-af-sel',
                'data-mq', 'data-mq-sel', 'data-ml', 'data-mc', 'data-qfield', 'data-qsel',
                // véhicule et logement
                'data-sfield', 'data-insp', 'data-vo', 'data-vo-sel', 'data-ho', 'data-ho-sel',

@@ -12,7 +12,8 @@
 // ---------------------------------------------------------------- esquema
 
 var SCHEMA = {
-  Profiles:     ['id', 'name', 'createdAt'],
+  // 'presentation': el texto para presentarse en las entrevistas.
+  Profiles:     ['id', 'name', 'createdAt', 'presentation'],
   JobTypes:     ['id', 'profileId', 'position', 'tipo', 'porQue', 'nivelFrances', 'prioridad'],
   // Las columnas nuevas van SIEMPRE al final: anadirlas en medio desalinearia
   // las filas ya guardadas.
@@ -25,7 +26,9 @@ var SCHEMA = {
 
   // Empresas del perfil. Las candidaturas se enlazan por NOMBRE, no por id:
   // el campo empresa sigue siendo texto libre con autocompletado.
-  Companies: ['id', 'profileId', 'position', 'name', 'description', 'ubicacion', 'lat', 'lon'],
+  // 'nota' es sobre 10, 'contactado' vale 'si' o ''.
+  Companies: ['id', 'profileId', 'position', 'name', 'description', 'ubicacion', 'lat', 'lon',
+              'nota', 'email', 'contactado'],
 
   // Detalle de una candidatura. En Questions, 'answer' es la respuesta que
   // conviene dar si vuelven a hacer la misma pregunta en otra entrevista.
@@ -114,6 +117,7 @@ function route(req) {
     case 'listProfiles':      return { profiles: sortBy(readAll('Profiles'), 'createdAt') };
     case 'createProfile':     return { profile: createProfile(p.name) };
     case 'renameProfile':     return { profile: renameProfile(p.id, p.name) };
+    case 'upsertPresentation': return { row: setPresentation(p.id, p.presentation) };
     case 'deleteProfile':     return deleteProfile(p.id);
     case 'loadProfile':       return loadProfile(p.profileId || req.profileId);
     case 'upsertJobType':     return { row: upsert('JobTypes', p) };
@@ -172,6 +176,14 @@ function renameProfile(id, name) {
   var row = findById('Profiles', id);
   if (!row) throw new Error('Perfil no encontrado');
   row.name = name;
+  return upsert('Profiles', row);
+}
+
+/** Solo toca el texto de presentacion: el nombre no viaja con el. */
+function setPresentation(id, text) {
+  var row = findById('Profiles', id);
+  if (!row) throw new Error('Perfil no encontrado');
+  row.presentation = String(text == null ? '' : text);
   return upsert('Profiles', row);
 }
 

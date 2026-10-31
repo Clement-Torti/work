@@ -214,11 +214,11 @@ arrastrando el marcador; se guarda como `lat`/`lon` en la hoja.
 
 | Pestaña | Columnas |
 |---|---|
-| `Profiles` | `id`, `name`, `createdAt` |
+| `Profiles` | `id`, `name`, `createdAt`, `presentation` |
 | `JobTypes` | `id`, `profileId`, `position`, `tipo`, `porQue`, `nivelFrances`, `prioridad` |
 | `Applications` | `id`, `profileId`, `jobTypeId`, `position`, `fecha`, `empresa`, `puesto`, `fuente`, `estado`, `proximaAccion`, `enlace`, `nota`, `misiones`, `sueldo`, `modalidad`, `ventajas`, `ubicacion`, `lat`, `lon`, `notaComentario`, `cartaMotivacion`, `contrato` |
 | `Channels` | `id`, `profileId`, `channelKey`, `name`, `url`, `hecho`, `notas` |
-| `Companies` | `id`, `profileId`, `position`, `name`, `description`, `ubicacion`, `lat`, `lon` |
+| `Companies` | `id`, `profileId`, `position`, `name`, `description`, `ubicacion`, `lat`, `lon`, `nota`, `email`, `contactado` |
 | `Questions` | `id`, `profileId`, `applicationId`, `position`, `question`, `answered`, `answer` |
 | `Learnings` | `id`, `profileId`, `applicationId`, `position`, `note` |
 | `Sites` | `id`, `profileId`, `domain`, `siteKey`, `name`, `url`, `hecho`, `notas` |
