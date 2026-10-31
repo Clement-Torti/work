@@ -216,7 +216,8 @@ function renderQuestions(state, openQGroups) {
     byId: (a, id) => a.find(x => x.id === id) || null,
     selectHtml: (o, v) => '<select>' + v + '</select>',
     appLabel: (a) => !a ? '—' : (a.empresa || a.puesto || 'Candidature sans nom'),
-    autoGrowAll: () => {}
+    autoGrowAll: () => {},
+    renderEmCounts: () => {}
   };
   const keys = Object.keys(env);
   new Function(...keys, body + '\nrenderAllQuestions();')(...keys.map(k => env[k]));
@@ -660,7 +661,7 @@ check('la cabecera del pliegue esconde el marcador del navegador',
 // "Enregistré". El texto desaparecia al recargar, sin un solo aviso.
 console.log('\n== todo campo editable se guarda solo ==');
 
-const HOOKS = ['data-field', 'data-cfield', 'data-cofield', 'data-cocheck', 'data-af', 'data-af-sel',
+const HOOKS = ['data-field', 'data-cfield', 'data-cofield', 'data-cocheck', 'data-dfield', 'data-af', 'data-af-sel',
                'data-mq', 'data-mq-sel', 'data-ml', 'data-mc', 'data-qfield', 'data-qsel',
                // véhicule et logement
                'data-sfield', 'data-insp', 'data-vo', 'data-vo-sel', 'data-ho', 'data-ho-sel',

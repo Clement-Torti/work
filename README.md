@@ -229,6 +229,7 @@ arrastrando el marcador; se guarda como `lat`/`lon` en la hoja.
 | `HomeOffers` | `id`, `profileId`, `position`, `fecha`, `titulo`, `agencia`, `tipoVendedor`, `alquiler`, `cargas`, `superficie`, `piezas`, `planta`, `muebles`, `dpe`, `disponible`, `enlace`, `telefono`, `ubicacion`, `lat`, `lon`, `estado`, `nota`, `notaComentario`, `proximaAccion` |
 | `Inspections` | `id`, `profileId`, `domain`, `offerId`, `position`, `item`, `done`, `nota` |
 | `Contacts` | `id`, `profileId`, `applicationId`, `position`, `name`, `role`, `email`, `phone` |
+| `Drafts` | `id`, `profileId`, `position`, `kind`, `name`, `subject`, `body` |
 
 Las columnas nuevas se añaden **siempre al final**. Insertarlas en medio desalinearía
 las filas ya guardadas: es la razón por la que `nota` aparece después de `enlace` y no

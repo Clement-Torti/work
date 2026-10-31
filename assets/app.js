@@ -178,6 +178,7 @@
     questions: [],
     learnings: [],
     contacts: [],
+    drafts: [],
 
     // Las otras dos busquedas
     sites: [],
@@ -205,6 +206,8 @@
   var coPage = 0;
   var trackPages = {};    // seccion 4: id de tipo de puesto -> pagina abierta
   var PAGE_SIZE = 10;
+  var emView = 'tracking'; // parte del volet Emploi a la vista
+  var draftSel = null;    // seccion 6: borrador abierto en el editor
 
   // ---------------------------------------------------------------- utils
   var $ = function (id) { return document.getElementById(id); };
@@ -586,6 +589,7 @@
       state.questions = data.questions || [];
       state.learnings = data.learnings || [];
       state.contacts = data.contacts || [];
+      state.drafts = data.drafts || [];
       state.sites = data.sites || [];
       state.criteria = data.criteria || [];
       state.vehModels = data.vehModels || [];
@@ -593,7 +597,7 @@
       state.vehOffers = data.vehOffers || [];
       state.homeOffers = data.homeOffers || [];
       state.inspections = data.inspections || [];
-      coSel = null; coQuery = ''; coPage = 0; trackPages = {};
+      coSel = null; coQuery = ''; coPage = 0; trackPages = {}; draftSel = null;
       $('companies-search').value = '';
       localStorage.setItem(LS_PROFILE, id);
       renderApp();
@@ -625,11 +629,13 @@
     renderTracking();
     renderAllQuestions();
     $('pitch').value = state.profile.presentation || '';
+    renderDrafts();
     renderVehicule();
     renderLogement();
     // La pestana se recuerda: al recargar se vuelve donde estabas.
     var saved = 'emploi';
     try { saved = localStorage.getItem(LS_TAB) || 'emploi'; } catch (e) {}
+    try { emView = localStorage.getItem(LS_EMVIEW) || emView; } catch (e) {}
     showTab(saved);
   }
 
@@ -982,6 +988,7 @@
     syncCompanyMarkers();
     coHl = null;   // la fila resaltada ya no existe tras reconstruir la tabla
     if (coSel) paintCompany(coSel);
+    renderEmCounts();
   }
 
   function updateCompaniesCount(shown) {
@@ -1382,6 +1389,7 @@
 
   function renderTracking() {
     var box = $('tracking');
+    renderEmCounts();
     renderTrackingBar();
 
     if (!state.jobTypes.length) {
@@ -1646,6 +1654,7 @@
 
   function renderAllQuestions() {
     var box = $('all-questions');
+    renderEmCounts();
     if (!state.questions.length) {
       box.innerHTML = '<p class="empty">Les questions s\u2019ajoutent depuis la fiche d\u2019une candidature ' +
         '(bouton <strong>Fiche</strong> dans le tableau de suivi). Elles se retrouvent toutes ici.</p>';
@@ -1781,6 +1790,203 @@
     enqueue('question-del:' + id, 'deleteQuestion', { id: id });
     renderAllQuestions();
     renderTracking();
+  });
+
+  // ------------------------------------------- volet Emploi: una parte a la vez
+  // Cinco partes en una sola pagina obligaban a scrollar mucho: se ensena una
+  // y la barra de arriba salta entre ellas. Se recuerda la ultima abierta.
+
+  var LS_EMVIEW = 'estrasburgo.emploiView';
+  var EM_VIEWS = ['setup', 'companies', 'tracking', 'interactions', 'spontanee'];
+
+  function showEmView(name) {
+    if (EM_VIEWS.indexOf(name) < 0) name = 'tracking';
+    emView = name;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-emview]'), function (sec) {
+      var on = sec.getAttribute('data-emview') === name;
+      sec.hidden = !on;
+      // Un textarea oculto mide 0: se remide al ensenarlo.
+      if (on) autoGrowAll(sec);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-emtab]'), function (b) {
+      var on = b.getAttribute('data-emtab') === name;
+      b.classList.toggle('is-on', on);
+      if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+    });
+    try { localStorage.setItem(LS_EMVIEW, name); } catch (e) {}
+    if (name === 'companies') initCompaniesMap();
+  }
+
+  /** El numerito de cada parte, para saber donde hay algo sin abrirla. */
+  function renderEmCounts() {
+    var counts = {
+      setup: state.jobTypes.length,
+      companies: state.companies.length,
+      tracking: state.applications.filter(function (a) { return !isHidden(a); }).length,
+      interactions: state.questions.length,
+      spontanee: state.drafts.length
+    };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-emcount]'), function (el) {
+      var n = counts[el.getAttribute('data-emcount')];
+      el.textContent = n ? String(n) : '';
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-emtab]');
+    if (b) showEmView(b.getAttribute('data-emtab'));
+  });
+
+  // ------------------------------------------- 6. candidature spontanee
+
+  var DRAFT_KINDS = [
+    { kind: 'email', label: '✉️ Emails', add: '+ Nouvel email',
+      empty: 'Aucun email pour l’instant.' },
+    { kind: 'linkedin', label: '💼 Messages LinkedIn', add: '+ Nouveau message',
+      empty: 'Aucun message pour l’instant.' }
+  ];
+
+  /** Una nota de invitacion de LinkedIn no admite mas. */
+  var LINKEDIN_NOTE_MAX = 300;
+
+  function draftLabel(d) {
+    return String(d.name || '').trim() ||
+      (d.kind === 'linkedin' ? 'Message sans nom' : 'Email sans nom');
+  }
+
+  function renderDrafts() {
+    if (!byId(state.drafts, draftSel)) draftSel = state.drafts.length ? state.drafts[0].id : null;
+    renderDraftList();
+    renderDraftEditor();
+    renderEmCounts();
+  }
+
+  function renderDraftList() {
+    $('drafts-list').innerHTML = DRAFT_KINDS.map(function (k) {
+      var rows = state.drafts.filter(function (d) { return d.kind === k.kind; });
+      return '<div class="drafts-group">' +
+        '<div class="drafts-group-head">' + k.label + '</div>' +
+        (rows.length ? rows.map(function (d) {
+          return '<button class="drafts-item' + (d.id === draftSel ? ' is-on' : '') + '" type="button" ' +
+              'data-draft-open="' + esc(d.id) + '">' +
+            '<span class="drafts-item-name">' + esc(draftLabel(d)) + '</span>' +
+            '<span class="drafts-item-peek">' + esc(peek(d.subject || d.body, 70) || 'vide') + '</span>' +
+          '</button>';
+        }).join('') : '<p class="drafts-none">' + k.empty + '</p>') +
+        '<button class="btn btn--sm drafts-add" type="button" data-draft-add="' + k.kind + '">' +
+          k.add + '</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderDraftEditor() {
+    var box = $('drafts-editor');
+    var d = byId(state.drafts, draftSel);
+    if (!d) {
+      box.innerHTML = '<p class="empty">Crée ton premier brouillon : un email de candidature ' +
+        'spontanée, ou un message LinkedIn pour un recruteur ou un employé de ' +
+        'l’entreprise.</p>';
+      return;
+    }
+    var email = d.kind !== 'linkedin';
+    box.innerHTML =
+      '<div class="drafts-editor-head"><span class="pill">' + (email ? 'Email' : 'LinkedIn') + '</span></div>' +
+      '<div class="field"><label>Nom du brouillon</label>' +
+        '<input class="input" data-dfield="name" value="' + esc(d.name) + '" ' +
+          'placeholder="' + (email ? 'Ex. : ESN — version courte' : 'Ex. : Premier contact RH') + '"></div>' +
+      (email ? '<div class="field"><label>Objet</label>' +
+        '<input class="input" data-dfield="subject" value="' + esc(d.subject) + '" ' +
+          'placeholder="Ex. : Candidature spontanée — développeur web"></div>' : '') +
+      '<div class="field"><label>' + (email ? 'Email' : 'Message') + '</label>' +
+        '<textarea class="input drafts-body" data-dfield="body" rows="' + (email ? 14 : 8) + '" ' +
+          'placeholder="' + (email
+            ? 'Madame, Monsieur,&#10;&#10;Je me permets de vous contacter…'
+            : 'Bonjour [Prénom],&#10;&#10;J’ai vu que vous travaillez chez [Entreprise]…') +
+          '">' + esc(d.body) + '</textarea>' +
+        '<p class="hint" data-draft-count>' + esc(draftCountText(d)) + '</p></div>' +
+      '<div class="row-actions">' +
+        '<button class="btn btn--primary btn--sm" type="button" data-draft-copy="1">Copier</button>' +
+        '<button class="btn btn--sm" type="button" data-draft-dup="1">Dupliquer</button>' +
+        '<span class="count-hint" data-draft-copied></span>' +
+        '<span class="topbar-spacer"></span>' +
+        '<button class="btn btn--danger btn--sm" type="button" data-draft-del="1">Supprimer</button>' +
+      '</div>';
+  }
+
+  function draftCountText(d) {
+    var body = String(d.body || '');
+    if (d.kind === 'linkedin') {
+      return body.length + ' caractères' + (body.length > LINKEDIN_NOTE_MAX
+        ? ' · trop long pour une note d’invitation (' + LINKEDIN_NOTE_MAX + ' max), ' +
+          'OK pour un message direct'
+        : ' · tient dans une note d’invitation (' + LINKEDIN_NOTE_MAX + ' max)');
+    }
+    var words = body.trim() ? body.trim().split(/\s+/).length : 0;
+    return words + (words === 1 ? ' mot' : ' mots');
+  }
+
+  function addDraft(kind, from) {
+    var row = {
+      id: uid(), profileId: state.profileId, position: nextPosition(state.drafts), kind: kind,
+      name: from ? draftLabel(from) + ' (copie)' : '',
+      subject: from ? from.subject : '', body: from ? from.body : ''
+    };
+    state.drafts.push(row);
+    enqueue('draft:' + row.id, 'upsertDraft', row);
+    draftSel = row.id;
+    renderDrafts();
+    var input = $('drafts-editor').querySelector('[data-dfield="name"]');
+    if (input) { input.focus(); if (from) input.select(); }
+  }
+
+  $('drafts-list').addEventListener('click', function (e) {
+    var add = e.target.closest('[data-draft-add]');
+    if (add) return addDraft(add.getAttribute('data-draft-add'));
+    var open = e.target.closest('[data-draft-open]');
+    if (!open) return;
+    draftSel = open.getAttribute('data-draft-open');
+    renderDraftList();
+    renderDraftEditor();
+  });
+
+  $('drafts-editor').addEventListener('input', function (e) {
+    var field = e.target.getAttribute('data-dfield');
+    var d = byId(state.drafts, draftSel);
+    if (!field || !d) return;
+    d[field] = e.target.value;
+    enqueue('draft:' + d.id, 'upsertDraft', d);
+    // Solo la lista: repintar el editor quitaria el foco a lo que se escribe.
+    renderDraftList();
+    var count = $('drafts-editor').querySelector('[data-draft-count]');
+    if (count) count.textContent = draftCountText(d);
+  });
+
+  $('drafts-editor').addEventListener('click', function (e) {
+    var d = byId(state.drafts, draftSel);
+    if (!d) return;
+
+    if (e.target.getAttribute('data-draft-copy')) {
+      var text = d.kind !== 'linkedin' && String(d.subject || '').trim()
+        ? 'Objet : ' + d.subject + '\n\n' + (d.body || '') : (d.body || '');
+      var label = $('drafts-editor').querySelector('[data-draft-copied]');
+      copyToClipboard(text).then(function () {
+        if (label) label.textContent = 'Copié ✓';
+      }).catch(function () {
+        var area = $('drafts-editor').querySelector('[data-dfield="body"]');
+        if (area) { area.focus(); area.select(); }
+        if (label) label.textContent = 'Copie impossible : le texte est sélectionné, fais Ctrl+C.';
+      });
+      return;
+    }
+
+    if (e.target.getAttribute('data-draft-dup')) return addDraft(d.kind, d);
+
+    if (!e.target.getAttribute('data-draft-del')) return;
+    if (!confirm('Supprimer le brouillon « ' + draftLabel(d) + ' » ?')) return;
+    state.drafts = state.drafts.filter(function (r) { return r.id !== d.id; });
+    enqueue('draft-del:' + d.id, 'deleteDraft', { id: d.id });
+    draftSel = null;
+    renderDrafts();
   });
 
   // =====================================================================
@@ -3240,7 +3446,7 @@
     });
     try { localStorage.setItem(LS_TAB, name); } catch (e) {}
     // Los mapas se miden mal mientras estan ocultos: hay que remedirlos.
-    if (name === 'emploi') initCompaniesMap();
+    if (name === 'emploi') showEmView(emView);
     if (name === 'logement') { initHomeMap(); syncHomeMarkers(); }
   }
 

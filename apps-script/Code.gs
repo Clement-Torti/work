@@ -36,6 +36,10 @@ var SCHEMA = {
   Learnings: ['id', 'profileId', 'applicationId', 'position', 'note'],
   Contacts:  ['id', 'profileId', 'applicationId', 'position', 'name', 'role', 'email', 'phone'],
 
+  // Borradores de candidatura espontanea. 'kind' vale 'email' o 'linkedin';
+  // 'subject' solo sirve para los emails.
+  Drafts: ['id', 'profileId', 'position', 'kind', 'name', 'subject', 'body'],
+
   // ---- Las otras dos busquedas: vehiculo y vivienda ----------------
   // 'domain' vale 'veh' o 'home'. Las tres busquedas comparten la forma
   // -sitios donde buscar, criterios, ofertas, ficha- pero no las tablas:
@@ -137,6 +141,9 @@ function route(req) {
     case 'upsertContact':     return { row: upsert('Contacts', p) };
     case 'deleteContact':     return { removed: remove('Contacts', p.id) };
 
+    case 'upsertDraft':       return { row: upsert('Drafts', p) };
+    case 'deleteDraft':       return { removed: remove('Drafts', p.id) };
+
     case 'importOffers':      return importOffers(p);
 
     // ---- vehiculo y vivienda ----------------------------------------
@@ -188,7 +195,7 @@ function setPresentation(id, text) {
 }
 
 function deleteProfile(id) {
-  ['Applications', 'JobTypes', 'Channels', 'Companies',
+  ['Applications', 'JobTypes', 'Channels', 'Companies', 'Drafts',
    'Sites', 'Criteria', 'VehModels', 'Checks', 'VehOffers', 'HomeOffers', 'Inspections']
   .concat(CHILDREN).forEach(function (name) {
     removeWhere(name, 'profileId', id);
@@ -309,6 +316,7 @@ function loadProfile(profileId) {
     questions:    sortBy(readWhere('Questions', 'profileId', profileId), 'position'),
     learnings:    sortBy(readWhere('Learnings', 'profileId', profileId), 'position'),
     contacts:     sortBy(readWhere('Contacts', 'profileId', profileId), 'position'),
+    drafts:       sortBy(readWhere('Drafts', 'profileId', profileId), 'position'),
 
     sites:        readWhere('Sites', 'profileId', profileId),
     criteria:     sortBy(readWhere('Criteria', 'profileId', profileId), 'position'),

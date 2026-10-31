@@ -1442,3 +1442,126 @@ th.th-narrow { padding-left: 6px; padding-right: 6px; text-align: center; font-s
 @media print {
   .co-toolbar, .pager { display: none !important; }
 }
+
+/* ================================================================
+   Volet Emploi : une partie à la fois
+   ================================================================ */
+
+.subnav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  margin: 0 -8px 8px;
+  padding: 8px;
+  overflow-x: auto;
+  background: var(--page);
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+.subnav::-webkit-scrollbar { display: none; }
+
+.subnav-item {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.subnav-item:hover { border-color: var(--teal-line); color: var(--teal-dark); }
+.subnav-item.is-on { background: var(--teal); border-color: var(--teal); color: #fff; }
+.subnav-item:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+.subnav-count:empty { display: none; }
+.subnav-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+}
+.subnav-item.is-on .subnav-count { background: rgba(255, 255, 255, .22); color: #fff; }
+
+/* La première section d'une partie colle à la barre. */
+[data-emview] > h2.section { margin-top: 22px; }
+
+/* ================================================================
+   6. Candidature spontanée
+   ================================================================ */
+
+.drafts {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.drafts-list { display: grid; gap: 18px; }
+.drafts-group { display: grid; gap: 6px; }
+.drafts-group-head {
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+.drafts-none { margin: 0; color: var(--faint); font-size: 13.5px; font-style: italic; }
+.drafts-add { justify-self: start; }
+
+.drafts-item {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drafts-item:hover { border-color: var(--teal-line); }
+.drafts-item.is-on { border-color: var(--teal); background: var(--teal-soft); box-shadow: inset 3px 0 0 var(--teal); }
+.drafts-item-name { color: var(--ink); font-size: 14.5px; font-weight: 700; }
+.drafts-item-peek {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.drafts-editor {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #FBFCFC;
+}
+.drafts-editor .empty { margin: 0; }
+.drafts-editor-head { margin-bottom: 10px; }
+.drafts-body { resize: vertical; line-height: 1.5; }
+
+@media (max-width: 760px) {
+  .subnav { margin: 0 0 8px; padding: 6px 0; }
+  .drafts { grid-template-columns: 1fr; }
+  .drafts-editor { padding: 14px; }
+}
+
+@media print {
+  .subnav { display: none !important; }
+  [data-emview][hidden] { display: block !important; }
+}
+.drafts-editor-head .pill { background: var(--teal-soft); color: var(--teal-dark); }
